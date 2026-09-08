@@ -70,7 +70,7 @@ async def upload_meeting(
     }
 
     logger.info(
-        "meeting uploaded", extra={"job_id": job_id, "filename": file.filename}
+        "meeting uploaded", extra={"job_id": job_id, "uploaded_filename": file.filename}
     )
 
     background_tasks.add_task(_process_transcription, job_id, destination)

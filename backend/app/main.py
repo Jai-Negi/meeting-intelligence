@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
+from app.api.routes_meetings import router as meetings_router
 from app.config import get_settings
 from app.logging_config import setup_logging
 
@@ -15,6 +16,8 @@ app = FastAPI(
     description="Multi agent meeting intelligence engine",
     version="0.1.0",
 )
+
+app.include_router(meetings_router)
 
 
 @app.on_event("startup")
