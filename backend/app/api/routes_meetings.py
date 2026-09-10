@@ -2,10 +2,13 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
 from app.agents.transcription_agent import TranscriptionAgent
 from app.config import get_settings
+from app.database.models import Meeting, Transcript, TranscriptSegment
+from app.database.session import SessionLocal, get_db
 from app.schemas.meeting import (
     MeetingUploadResponse,
     TranscriptResponse,
@@ -17,40 +20,56 @@ router = APIRouter(prefix="/meetings", tags=["meetings"])
 
 settings = get_settings()
 
-# In memory job store. This is fine for local development and demos,
-# it will be replaced by the database backed job manager once that
-# piece of the orchestrator is built.
-_jobs: dict[str, dict] = {}
 
-
-async def _process_transcription(job_id: str, file_path: Path) -> None:
+async def _process_transcription(meeting_id: str, file_path: Path) -> None:
+    """
+    Runs in the background after upload. Opens its own database
+    session since the request's session is already closed by the
+    time this actually runs.
+    """
     agent = TranscriptionAgent(model_size=settings.whisper_model_size)
     result = await agent.execute(file_path=file_path)
 
-    if result.success:
-        _jobs[job_id] = {
-            "status": "completed",
-            "text": result.data.text,
-            "language": result.data.language,
-            "segments": [
-                {"start": s.start, "end": s.end, "text": s.text}
-                for s in result.data.segments
-            ],
-            "error": None,
-        }
-    else:
-        _jobs[job_id] = {
-            "status": "failed",
-            "text": None,
-            "language": None,
-            "segments": [],
-            "error": result.error,
-        }
+    db = SessionLocal()
+    try:
+        meeting = db.query(Meeting).filter_by(id=meeting_id).first()
+        if meeting is None:
+            logger.error("meeting not found for background job", extra={"meeting_id": meeting_id})
+            return
+
+        if result.success:
+            meeting.status = "completed"
+            transcript = Transcript(
+                meeting_id=meeting.id,
+                text=result.data.text,
+                language=result.data.language,
+            )
+            db.add(transcript)
+            db.flush()
+
+            for segment in result.data.segments:
+                db.add(
+                    TranscriptSegment(
+                        transcript_id=transcript.id,
+                        start=segment.start,
+                        end=segment.end,
+                        text=segment.text,
+                    )
+                )
+        else:
+            meeting.status = "failed"
+            meeting.error = result.error
+
+        db.commit()
+    finally:
+        db.close()
 
 
 @router.post("/upload", response_model=MeetingUploadResponse)
 async def upload_meeting(
-    background_tasks: BackgroundTasks, file: UploadFile
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    db: Session = Depends(get_db),
 ) -> MeetingUploadResponse:
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -61,13 +80,14 @@ async def upload_meeting(
     contents = await file.read()
     destination.write_bytes(contents)
 
-    _jobs[job_id] = {
-        "status": "processing",
-        "text": None,
-        "language": None,
-        "segments": [],
-        "error": None,
-    }
+    meeting = Meeting(
+        id=job_id,
+        filename=file.filename,
+        file_path=str(destination),
+        status="processing",
+    )
+    db.add(meeting)
+    db.commit()
 
     logger.info(
         "meeting uploaded", extra={"job_id": job_id, "uploaded_filename": file.filename}
@@ -75,23 +95,27 @@ async def upload_meeting(
 
     background_tasks.add_task(_process_transcription, job_id, destination)
 
-    return MeetingUploadResponse(
-        job_id=job_id, filename=file.filename, status="processing"
-    )
+    return MeetingUploadResponse(job_id=job_id, filename=file.filename, status="processing")
 
 
 @router.get("/{job_id}", response_model=TranscriptResponse)
-async def get_transcript(job_id: str) -> TranscriptResponse:
-    job = _jobs.get(job_id)
+async def get_transcript(job_id: str, db: Session = Depends(get_db)) -> TranscriptResponse:
+    meeting = db.query(Meeting).filter_by(id=job_id).first()
 
-    if job is None:
+    if meeting is None:
         raise HTTPException(status_code=404, detail="job not found")
+
+    if meeting.transcript is None:
+        return TranscriptResponse(job_id=job_id, status=meeting.status, error=meeting.error)
 
     return TranscriptResponse(
         job_id=job_id,
-        status=job["status"],
-        text=job["text"],
-        language=job["language"],
-        segments=[TranscriptSegmentResponse(**s) for s in job["segments"]],
-        error=job["error"],
+        status=meeting.status,
+        text=meeting.transcript.text,
+        language=meeting.transcript.language,
+        segments=[
+            TranscriptSegmentResponse(start=s.start, end=s.end, text=s.text)
+            for s in meeting.transcript.segments
+        ],
+        error=meeting.error,
     )

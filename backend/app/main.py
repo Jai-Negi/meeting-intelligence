@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.api.routes_meetings import router as meetings_router
 from app.config import get_settings
+from app.database.session import init_db
 from app.logging_config import setup_logging
 
 settings = get_settings()
@@ -22,6 +23,7 @@ app.include_router(meetings_router)
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    init_db()
     logger.info(
         "application starting",
         extra={"environment": settings.environment, "llm_provider": settings.llm_provider},
