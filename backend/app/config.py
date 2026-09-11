@@ -14,9 +14,10 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./meeting_intelligence.db"
 
     # LLM
+    groq_api_key: str = ""
     anthropic_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
-    llm_provider: str = "ollama"
+    llm_provider: str = "groq"
 
     # Whisper
     whisper_model_size: str = "base"
