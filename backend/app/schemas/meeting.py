@@ -7,6 +7,12 @@ class TranscriptSegmentResponse(BaseModel):
     text: str
 
 
+class ActionItemResponse(BaseModel):
+    description: str
+    owner: str | None = None
+    due_date: str | None = None
+
+
 class MeetingUploadResponse(BaseModel):
     job_id: str
     filename: str
@@ -19,4 +25,5 @@ class TranscriptResponse(BaseModel):
     text: str | None = None
     language: str | None = None
     segments: list[TranscriptSegmentResponse] = []
+    action_items: list[ActionItemResponse] = []
     error: str | None = None
