@@ -33,3 +33,4 @@ build/
 
 # Docker
 *.pid
+backend/uploads/
