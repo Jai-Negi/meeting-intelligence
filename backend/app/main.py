@@ -6,6 +6,7 @@ from app.api.routes_meetings import router as meetings_router
 from app.config import get_settings
 from app.database.session import init_db
 from app.logging_config import setup_logging
+from fastapi.middleware.cors import CORSMiddleware
 
 settings = get_settings()
 setup_logging(level="DEBUG" if settings.debug else "INFO")
@@ -18,6 +19,13 @@ app = FastAPI(
     version="0.1.0",
 )
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(meetings_router)
 
 
