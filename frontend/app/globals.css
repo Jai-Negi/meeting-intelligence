@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #faf9f5;
+  --ink: #1c1e1a;
+  --ink-soft: #5c5f56;
+  --line: #d9d6cc;
+  --accent: #2f5d4f;
+  --accent-soft: #e4ece9;
+  --amber: #a5691f;
+  --amber-soft: #f3e9db;
+  --red: #9b3a2e;
+  --red-soft: #f6e6e2;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
