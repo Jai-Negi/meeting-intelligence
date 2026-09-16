@@ -6,6 +6,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type Segment = { start: number; end: number; text: string };
 type ActionItem = { description: string; owner: string | null; due_date: string | null };
+type TimelineEvent = { topic: string; summary: string; approx_time: string | null };
+type Decision = { decision: string; context: string | null };
 type Status = "idle" | "uploading" | "processing" | "completed" | "failed";
 
 type MeetingResult = {
@@ -15,6 +17,8 @@ type MeetingResult = {
   language: string | null;
   segments: Segment[];
   action_items: ActionItem[];
+  timeline: TimelineEvent[];
+  decisions: Decision[];
   error: string | null;
 };
 
@@ -196,6 +200,71 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
+            )}
+          </section>
+
+          <section>
+            <div className="mb-4 flex items-baseline justify-between">
+              <h2 className="text-[13px] font-medium" style={{ color: "var(--ink-soft)" }}>
+                Decisions
+              </h2>
+              <span className="text-[13px]" style={{ color: "var(--ink-soft)" }}>
+                {result.decisions.length}
+              </span>
+            </div>
+
+            {result.decisions.length === 0 ? (
+              <p className="text-[14px]" style={{ color: "var(--ink-soft)" }}>
+                No clear decisions were made in this recording.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {result.decisions.map((item, i) => (
+                  <li key={i} className="border-l-2 pl-4" style={{ borderColor: "var(--amber)" }}>
+                    <p className="text-[15px]" style={{ color: "var(--ink)" }}>
+                      {item.decision}
+                    </p>
+                    {item.context && (
+                      <p className="mt-1 text-[13px]" style={{ color: "var(--ink-soft)" }}>
+                        {item.context}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <h2 className="mb-4 text-[13px] font-medium" style={{ color: "var(--ink-soft)" }}>
+              Timeline
+            </h2>
+
+            {result.timeline.length === 0 ? (
+              <p className="text-[14px]" style={{ color: "var(--ink-soft)" }}>
+                No distinct topics were identified in this recording.
+              </p>
+            ) : (
+              <ol className="space-y-4">
+                {result.timeline.map((event, i) => (
+                  <li key={i} className="flex gap-4">
+                    <span
+                      className="mt-[2px] shrink-0 font-mono text-[12px]"
+                      style={{ color: "var(--ink-soft)" }}
+                    >
+                      {event.approx_time ?? "—"}
+                    </span>
+                    <div>
+                      <p className="text-[15px] font-medium" style={{ color: "var(--ink)" }}>
+                        {event.topic}
+                      </p>
+                      <p className="mt-1 text-[14px] leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+                        {event.summary}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
             )}
           </section>
 
