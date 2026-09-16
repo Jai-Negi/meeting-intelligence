@@ -13,6 +13,17 @@ class ActionItemResponse(BaseModel):
     due_date: str | None = None
 
 
+class TimelineEventResponse(BaseModel):
+    topic: str
+    summary: str
+    approx_time: str | None = None
+
+
+class DecisionResponse(BaseModel):
+    decision: str
+    context: str | None = None
+
+
 class MeetingUploadResponse(BaseModel):
     job_id: str
     filename: str
@@ -26,4 +37,6 @@ class TranscriptResponse(BaseModel):
     language: str | None = None
     segments: list[TranscriptSegmentResponse] = []
     action_items: list[ActionItemResponse] = []
+    timeline: list[TimelineEventResponse] = []
+    decisions: list[DecisionResponse] = []
     error: str | None = None

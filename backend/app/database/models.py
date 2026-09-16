@@ -43,6 +43,12 @@ class Meeting(Base):
     action_items: Mapped[list["ActionItem"]] = relationship(
         back_populates="meeting", cascade="all, delete-orphan"
     )
+    timeline_events: Mapped[list["TimelineEvent"]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan"
+    )
+    decisions: Mapped[list["Decision"]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan"
+    )
 
 
 class Transcript(Base):
@@ -98,3 +104,40 @@ class ActionItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     meeting: Mapped["Meeting"] = relationship(back_populates="action_items")
+
+
+class TimelineEvent(Base):
+    """
+    A single topic discussed during a meeting, in the order it came
+    up. Populated by the timeline agent.
+    """
+
+    __tablename__ = "timeline_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_uuid)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id"), nullable=False)
+    topic: Mapped[str] = mapped_column(String, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    approx_time: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    meeting: Mapped["Meeting"] = relationship(back_populates="timeline_events")
+
+
+class Decision(Base):
+    """
+    A concrete decision made during a meeting, as distinct from a
+    topic that was merely discussed. Populated by the decision agent.
+    """
+
+    __tablename__ = "decisions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_uuid)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id"), nullable=False)
+    decision: Mapped[str] = mapped_column(Text, nullable=False)
+    context: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    meeting: Mapped["Meeting"] = relationship(back_populates="decisions")
