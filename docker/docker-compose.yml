@@ -1,0 +1,17 @@
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../backend/.env
+    volumes:
+      # Keep the SQLite database and uploaded recordings on the host
+      # so they survive container restarts and rebuilds.
+      - ../backend/data:/app/data
+      - ../backend/uploads:/app/uploads
+    environment:
+      DATABASE_URL: sqlite:///./data/meeting_intelligence.db
+    restart: unless-stopped
