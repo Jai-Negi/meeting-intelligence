@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from app.tools.validators import UploadValidationError, validate_upload_file
 from app.agents.action_item_agent import ActionItemAgent
 from app.agents.decision_agent import DecisionAgent
 from app.agents.timeline_agent import TimelineAgent
@@ -163,13 +164,22 @@ async def upload_meeting(
     file: UploadFile,
     db: Session = Depends(get_db),
 ) -> MeetingUploadResponse:
+    contents = await file.read()
+
+    try:
+        validate_upload_file(
+            filename=file.filename,
+            size_bytes=len(contents),
+            max_size_mb=settings.max_upload_size_mb,
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     job_id = str(uuid.uuid4())
     destination = upload_dir / f"{job_id}_{file.filename}"
-
-    contents = await file.read()
     destination.write_bytes(contents)
 
     meeting = Meeting(
