@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes_history import router as history_router
 from app.api.routes_meetings import router as meetings_router
 from app.config import get_settings
 from app.database.session import init_db
@@ -27,7 +28,7 @@ app.add_middleware(
 )
 
 app.include_router(meetings_router)
-
+app.include_router(history_router)
 
 @app.on_event("startup")
 async def on_startup() -> None:
@@ -36,7 +37,6 @@ async def on_startup() -> None:
         "application starting",
         extra={"environment": settings.environment, "llm_provider": settings.llm_provider},
     )
-
 
 @app.get("/health")
 async def health() -> dict:
