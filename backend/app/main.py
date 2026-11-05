@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes_history import router as history_router
 from app.api.routes_meetings import router as meetings_router
 from app.config import get_settings
+from app.database.maintenance import fail_interrupted_jobs
 from app.database.session import init_db
 from app.logging_config import setup_logging
 
@@ -33,6 +34,7 @@ app.include_router(history_router)
 @app.on_event("startup")
 async def on_startup() -> None:
     init_db()
+    fail_interrupted_jobs()
     logger.info(
         "application starting",
         extra={"environment": settings.environment, "llm_provider": settings.llm_provider},
