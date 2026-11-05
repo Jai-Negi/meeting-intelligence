@@ -1,6 +1,7 @@
 import logging
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.database.models import Meeting
@@ -28,3 +29,33 @@ async def list_meetings(
         )
         for m in meetings
     ]
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_meeting(job_id: str, db: Session = Depends(get_db)) -> Response:
+    """
+    Removes a meeting, its transcript, every extraction row, and the uploaded
+    audio file. Refuses while the meeting is still processing, because the
+    background job would otherwise write results for a meeting that no
+    longer exists.
+    """
+    meeting = db.query(Meeting).filter_by(id=job_id).first()
+
+    if meeting is None:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    if meeting.status == "processing":
+        raise HTTPException(
+            status_code=409,
+            detail="this meeting is still processing, try again once it has finished",
+        )
+
+    file_path = Path(meeting.file_path)
+
+    db.delete(meeting)
+    db.commit()
+
+    file_path.unlink(missing_ok=True)
+    logger.info("meeting deleted", extra={"job_id": job_id})
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
