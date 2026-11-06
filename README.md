@@ -34,6 +34,31 @@ The backend lives in its own folder with a clear separation between agents, tool
 
 Setup instructions are being finalized and will live in docs/SETUP_GUIDE.md. Once the first milestone is working end to end, this section will be updated with exact steps to run the project locally.
 
+## API
+
+The backend exposes the endpoints below. When the server is running you can also try them in the browser at http://localhost:8000/docs.
+
+`GET /health` returns a simple status so you can check the server is up.
+
+`POST /meetings/upload` accepts a recording as multipart form data in a field called file. Allowed types are mp3, m4a, wav, mp4, webm, ogg, flac and aac, up to the size set by MAX_UPLOAD_SIZE_MB (500 by default). It returns a job id straight away while transcription and analysis carry on in the background. A file that is the wrong type, empty or too large is rejected with a 400 and a plain explanation.
+
+`GET /meetings/{job_id}` returns the status of a job, which is processing, completed or failed. Once the transcript is ready it includes the text, language and timestamped segments, and once analysis finishes it also includes action items, timeline events and decisions. A failed job includes the reason.
+
+`GET /meetings` lists past meetings, newest first, without their full results. It takes an optional limit between 1 and 200, and defaults to 50.
+
+`DELETE /meetings/{job_id}` removes a meeting along with its transcript, extracted results and uploaded audio. It returns a 404 for an unknown job and a 409 while the meeting is still processing.
+
+If the server restarts while a job is processing, that job can never finish, so on the next startup it is marked as failed with an explanation.
+
+## Running the tests
+
+From the backend folder, install the development requirements and run pytest:
+
+    pip install -r requirements-dev.txt
+    python -m pytest tests/ -v
+
+The tests use a throwaway database and uploads folder, so they never touch your real data. The transcription and analysis agents are replaced with fakes, which means the tests need no API keys, no Whisper model and finish in about a second.
+
 ## Roadmap
 
 The rough plan is to get transcription and action item extraction working first, then add the timeline and decision agents, followed by insight generation and automatic follow up emails. Calendar integration and the frontend dashboard come after the backend is solid.
