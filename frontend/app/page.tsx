@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_URL, readError } from "./api";
+import PastMeetings from "./PastMeetings";
 
 type Segment = { start: number; end: number; text: string };
 type ActionItem = { description: string; owner: string | null; due_date: string | null };
@@ -43,6 +44,7 @@ export default function Home() {
   }, []);
 
   const pollJob = useCallback((jobId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${API_URL}/meetings/${jobId}`);
@@ -81,7 +83,7 @@ export default function Home() {
           method: "POST",
           body: formData,
         });
-        if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
+        if (!res.ok) throw new Error(await readError(res, `upload failed with status ${res.status}`));
         const data = await res.json();
         setStatus("processing");
         pollJob(data.job_id);
@@ -89,6 +91,32 @@ export default function Home() {
         setErrorMessage(err instanceof Error ? err.message : "upload failed");
         setStatus("failed");
       }
+    },
+    [pollJob]
+  );
+
+  const openMeeting = useCallback(async (jobId: string, name: string) => {
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`${API_URL}/meetings/${jobId}`);
+      if (!res.ok) throw new Error(`server responded with ${res.status}`);
+      const data: MeetingResult = await res.json();
+      setFileName(name);
+      setResult(data);
+      setStatus("completed");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "could not open this meeting");
+    }
+  }, []);
+
+  const resumeProcessing = useCallback(
+    (jobId: string, name: string) => {
+      setFileName(name);
+      setResult(null);
+      setErrorMessage(null);
+      setStatus("processing");
+      pollJob(jobId);
     },
     [pollJob]
   );
@@ -167,6 +195,10 @@ export default function Home() {
 
       {result && status === "completed" ? (
         <div className="mt-12 space-y-12">
+          <p className="text-[13px]" style={{ color: "var(--ink-soft)" }}>
+            {fileName}
+          </p>
+
           <section>
             <div className="mb-4 flex items-baseline justify-between">
               <h2 className="text-[13px] font-medium" style={{ color: "var(--ink-soft)" }}>
@@ -303,6 +335,8 @@ export default function Home() {
           </button>
         </div>
       ) : null}
+
+      {!isBusy ? <PastMeetings onOpen={openMeeting} onRetried={resumeProcessing} /> : null}
     </div>
   );
 }
