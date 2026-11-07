@@ -196,3 +196,30 @@ def test_one_failing_extraction_does_not_block_the_others(client, monkeypatch):
     assert body["action_items"] == []
     assert len(body["timeline"]) == 1
     assert len(body["decisions"]) == 1
+
+
+def test_meeting_is_only_completed_once_extractions_are_saved(client, monkeypatch):
+    job_id = _seed_meeting()
+    status_seen_during_extraction = []
+
+    class _SpyAgent:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def execute(self, **kwargs):
+            db = SessionLocal()
+            try:
+                status_seen_during_extraction.append(db.get(Meeting, job_id).status)
+            finally:
+                db.close()
+            return _ok([])
+
+    monkeypatch.setattr(routes_meetings, "TranscriptionAgent", _fake_agent(_ok(_transcript())))
+    monkeypatch.setattr(routes_meetings, "ActionItemAgent", _SpyAgent)
+    monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_ok([])))
+    monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_ok([])))
+
+    asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
+
+    assert status_seen_during_extraction == ["processing"]
+    assert client.get(f"/meetings/{job_id}").json()["status"] == "completed"

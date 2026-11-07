@@ -61,7 +61,6 @@ async def _process_transcription(meeting_id: str, file_path: Path) -> None:
             db.commit()
             return
 
-        meeting.status = "completed"
         transcript = Transcript(
             meeting_id=meeting.id,
             text=result.data.text,
@@ -85,7 +84,9 @@ async def _process_transcription(meeting_id: str, file_path: Path) -> None:
         # Transcription succeeded, now run all three extraction agents
         # concurrently since none of them depend on each other. A
         # failure in any one of them does not affect the others or
-        # roll back the transcript.
+        # roll back the transcript. The meeting stays "processing" until
+        # they have finished, so a "completed" meeting always has its
+        # full results.
         await _process_extractions(meeting_id=meeting_id, transcript_text=result.data.text)
 
     finally:
@@ -151,6 +152,10 @@ async def _process_extractions(meeting_id: str, transcript_text: str) -> None:
                 "decision extraction failed",
                 extra={"meeting_id": meeting_id, "error": decision_result.error},
             )
+
+        meeting = db.query(Meeting).filter_by(id=meeting_id).first()
+        if meeting is not None:
+            meeting.status = "completed"
 
         db.commit()
         logger.info("extractions saved", extra={"meeting_id": meeting_id})
