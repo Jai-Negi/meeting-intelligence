@@ -48,6 +48,8 @@ The backend exposes the endpoints below. When the server is running you can also
 
 `DELETE /meetings/{job_id}` removes a meeting along with its transcript, extracted results and uploaded audio. It returns a 404 for an unknown job and a 409 while the meeting is still processing.
 
+`POST /meetings/{job_id}/retry` runs the pipeline again for a failed meeting, using the audio saved at upload, and returns a 202 while the work carries on in the background. It returns a 409 if the meeting has not failed or if the audio file is no longer on the server, and a 404 for an unknown job.
+
 If the server restarts while a job is processing, that job can never finish, so on the next startup it is marked as failed with an explanation.
 
 ## Running the tests
