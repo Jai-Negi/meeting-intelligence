@@ -1,5 +1,7 @@
 # Meeting Intelligence Engine
 
+![Backend tests](https://github.com/Jai-Negi/meeting-intelligence/actions/workflows/backend-tests.yml/badge.svg)
+
 A multi agent system that takes a recorded meeting and turns it into something actually useful: a clean transcript, a list of action items, key decisions, and a short summary of what happened. The goal is to save people from re watching an hour long call just to remember what was agreed on.
 
 ## What it does
