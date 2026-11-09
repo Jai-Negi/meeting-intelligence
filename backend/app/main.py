@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes_email import router as email_router
 from app.api.routes_history import router as history_router
 from app.api.routes_meetings import router as meetings_router
 from app.config import get_settings
@@ -30,6 +31,7 @@ app.add_middleware(
 
 app.include_router(meetings_router)
 app.include_router(history_router)
+app.include_router(email_router)
 
 @app.on_event("startup")
 async def on_startup() -> None:
