@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { API_URL, readError } from "./api";
+import EmailDraft from "./EmailDraft";
 import PastMeetings from "./PastMeetings";
 
 type Segment = { start: number; end: number; text: string };
@@ -299,6 +300,8 @@ export default function Home() {
               </ol>
             )}
           </section>
+
+          <EmailDraft key={result.job_id} jobId={result.job_id} />
 
           <section>
             <h2 className="mb-4 text-[13px] font-medium" style={{ color: "var(--ink-soft)" }}>
