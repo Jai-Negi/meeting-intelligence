@@ -1,5 +1,9 @@
 from functools import lru_cache
+from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+GROQ_MAX_UPLOAD_MB = 25  # the largest audio file Groq's free tier accepts
 
 
 class Settings(BaseSettings):
@@ -22,6 +26,10 @@ class Settings(BaseSettings):
     # Whisper
     whisper_model_size: str = "base"
 
+    # Transcription: local runs Whisper on this machine, groq uses Groq's hosted Whisper
+    transcription_provider: Literal["local", "groq"] = "local"
+    groq_whisper_model: str = "whisper-large-v3-turbo"
+
     # File storage
     upload_dir: str = "./uploads"
     max_upload_size_mb: int = 500
@@ -32,6 +40,13 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def effective_max_upload_mb(self) -> int:
+        """The upload limit that actually applies, given which transcriber is in use."""
+        if self.transcription_provider == "groq":
+            return min(self.max_upload_size_mb, GROQ_MAX_UPLOAD_MB)
+        return self.max_upload_size_mb
 
 
 @lru_cache
