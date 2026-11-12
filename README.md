@@ -52,6 +52,8 @@ The backend exposes the endpoints below. When the server is running you can also
 
 `POST /meetings/{job_id}/retry` runs the pipeline again for a failed meeting, using the audio saved at upload, and returns a 202 while the work carries on in the background. It returns a 409 if the meeting has not failed or if the audio file is no longer on the server, and a 404 for an unknown job.
 
+`POST /meetings/{job_id}/email` drafts a follow up email for a finished meeting from its transcript, action items and decisions, and returns a subject and a body. Nothing is stored, so asking again simply gives a fresh draft. It returns a 409 until the meeting has finished processing, a 404 for an unknown job, and a 502 with the reason if the language model could not produce a usable draft.
+
 If the server restarts while a job is processing, that job can never finish, so on the next startup it is marked as failed with an explanation.
 
 ## Running the tests
