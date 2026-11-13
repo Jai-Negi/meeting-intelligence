@@ -175,7 +175,7 @@ async def upload_meeting(
         validate_upload_file(
             filename=file.filename,
             size_bytes=len(contents),
-            max_size_mb=settings.max_upload_size_mb,
+            max_size_mb=settings.effective_max_upload_mb,
         )
     except UploadValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
