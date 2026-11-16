@@ -22,11 +22,11 @@ I wanted a project that goes beyond a simple wrapper around an LLM call. This on
 
 ## Tech stack
 
-Backend is built with FastAPI and Python. Agent orchestration is done with LangChain, and the LLM layer can run either locally through Ollama or against the Anthropic API depending on what is available. Transcription runs on Whisper. Data is stored using SQLAlchemy, starting with SQLite for local development and moving to Postgres for anything beyond that. The frontend, which will come later, is planned in Next.js and deployed on Vercel. The backend itself is containerized with Docker so it can be deployed anywhere.
+Backend is built with FastAPI and Python. Agent orchestration is done with LangChain, and the LLM layer can run through Groq, locally through Ollama, or against the Anthropic API depending on what is available. Transcription runs on Whisper, either locally or through Groq. Data is stored using SQLAlchemy, starting with SQLite for local development and moving to Postgres for anything beyond that. The frontend is Next.js. The backend is containerized with Docker so it can be deployed anywhere.
 
 ## Project status
 
-This is an active work in progress. The project structure and scaffolding are in place. Agents and API endpoints are being built out milestone by milestone, starting with transcription and working outward from there.
+This is an active work in progress. Transcription, action items, timeline, decisions, history, retry, and follow-up email drafts are in place, along with a Next.js UI for uploading recordings and reviewing past meetings.
 
 ## Project structure
 
@@ -34,7 +34,7 @@ The backend lives in its own folder with a clear separation between agents, tool
 
 ## Getting started
 
-Setup instructions are being finalized and will live in docs/SETUP_GUIDE.md. Once the first milestone is working end to end, this section will be updated with exact steps to run the project locally.
+Copy `.env.example` to `.env`. From `backend/`, install dependencies and start the API. From `frontend/`, run `npm install` and `npm run dev`. The API docs are at http://localhost:8000/docs.
 
 ## API
 
@@ -67,8 +67,8 @@ The tests use a throwaway database and uploads folder, so they never touch your 
 
 ## Roadmap
 
-The rough plan is to get transcription and action item extraction working first, then add the timeline and decision agents, followed by insight generation and automatic follow up emails. Calendar integration and the frontend dashboard come after the backend is solid.
+The remaining work is insight generation, calendar integration, and tightening the dashboard. Transcription, extraction, follow-up emails, and the frontend are already in the repo.
 
 ## License
 
-To be added.
+MIT. See `LICENSE`.
