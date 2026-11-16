@@ -49,7 +49,7 @@ export default function Home() {
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${API_URL}/meetings/${jobId}`);
-        if (!res.ok) throw new Error(`server responded with ${res.status}`);
+        if (!res.ok) throw new Error(await readError(res, `server responded with ${res.status}`));
         const data: MeetingResult = await res.json();
 
         if (data.status === "completed") {
