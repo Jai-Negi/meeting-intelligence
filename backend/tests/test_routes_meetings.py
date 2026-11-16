@@ -66,7 +66,9 @@ def _transcript():
 def test_health_endpoint(client):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["transcription_provider"] in ("local", "groq")
 
 
 def test_valid_upload_is_accepted_and_saved(client, no_background, tmp_path):
