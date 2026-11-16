@@ -156,12 +156,12 @@ export default function Home() {
             Drop an audio file here, or click to choose one
           </p>
           <p className="mt-1 text-[13px]" style={{ color: "var(--ink-soft)" }}>
-            .mp3, .m4a, .wav
+            .mp3, .m4a, .wav, .mp4, .webm, .ogg, .flac, .aac
           </p>
           <input
             ref={fileInputRef}
             type="file"
-            accept="audio/*"
+            accept=".mp3,.m4a,.wav,.mp4,.webm,.ogg,.flac,.aac,audio/*"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
