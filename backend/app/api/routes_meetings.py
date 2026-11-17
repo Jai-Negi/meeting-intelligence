@@ -184,7 +184,10 @@ async def upload_meeting(
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     job_id = str(uuid.uuid4())
-    destination = upload_dir / f"{job_id}_{file.filename}"
+    # Keep only the final name component so a filename such as "../../x.mp3"
+    # or "C:\\temp\\x.mp3" can never place the file outside the uploads folder.
+    safe_name = Path(file.filename.replace("\\", "/")).name
+    destination = upload_dir / f"{job_id}_{safe_name}"
     destination.write_bytes(contents)
 
     meeting = Meeting(
