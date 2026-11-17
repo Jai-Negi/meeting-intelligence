@@ -2,6 +2,8 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from app.api import routes_meetings
 from app.database.models import Meeting
 from app.database.session import SessionLocal
@@ -84,6 +86,22 @@ def test_valid_upload_is_accepted_and_saved(client, no_background, tmp_path):
     assert saved[0].name == f"{body['job_id']}_standup.mp3"
     assert saved[0].read_bytes() == FAKE_AUDIO
 
+
+
+@pytest.mark.parametrize(
+    "name", ["../../escape.mp3", "nested/dir/escape.mp3", "..\\..\\escape.mp3"]
+)
+def test_upload_with_path_in_filename_is_saved_inside_uploads(
+    client, no_background, tmp_path, name
+):
+    response = _upload(client, name=name)
+
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+    saved = list((tmp_path / "uploads").iterdir())
+    assert [f.name for f in saved] == [f"{job_id}_escape.mp3"]
+    assert saved[0].is_file()
+    assert not (tmp_path / "escape.mp3").exists()
 
 def test_unsupported_file_type_is_rejected_and_nothing_is_stored(client, no_background, tmp_path):
     response = _upload(client, name="notes.txt", content=b"just some text")
