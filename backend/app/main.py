@@ -1,4 +1,6 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,10 +18,23 @@ setup_logging(level="DEBUG" if settings.debug else "INFO")
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    init_db()
+    fail_interrupted_jobs()
+    logger.info(
+        "application starting",
+        extra={"environment": settings.environment, "llm_provider": settings.llm_provider},
+    )
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     description="Multi agent meeting intelligence engine",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -33,14 +48,6 @@ app.include_router(meetings_router)
 app.include_router(history_router)
 app.include_router(email_router)
 
-@app.on_event("startup")
-async def on_startup() -> None:
-    init_db()
-    fail_interrupted_jobs()
-    logger.info(
-        "application starting",
-        extra={"environment": settings.environment, "llm_provider": settings.llm_provider},
-    )
 
 @app.get("/health")
 async def health() -> dict:
