@@ -13,7 +13,7 @@ WORKDIR /app
 # Installing dependencies first, separately from app code, so Docker
 # can cache this layer and skip the slow reinstall whenever only the
 # application code changes, not the dependencies.
-COPY requirements.txt .
+COPY requirements.txt requirements-base.txt ./
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
