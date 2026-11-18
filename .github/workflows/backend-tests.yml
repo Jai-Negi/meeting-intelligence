@@ -12,9 +12,9 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -26,6 +26,31 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -v
+
+  # Proves the slim hosted image works: only the base requirements, so no
+  # Whisper and no torch, and the whole suite must still pass.
+  test-hosted:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install base dependencies only
+        run: pip install -r requirements-base.txt pytest==8.3.3
+
+      - name: Check Whisper and torch are absent
+        run: python -c "import importlib.util as u; assert u.find_spec('whisper') is None and u.find_spec('torch') is None"
 
       - name: Run tests
         run: python -m pytest tests/ -v
