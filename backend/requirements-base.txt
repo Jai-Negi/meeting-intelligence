@@ -1,7 +1,7 @@
 # Everything the API needs except local Whisper. The hosted image installs only
 # this file and transcribes through Groq, which keeps torch (several GB) out of it.
 fastapi==0.115.0
-uvicorn[standard]==0.32.0
+uvicorn[standard]==0.54.0
 pydantic==2.9.2
 pydantic-settings==2.6.0
 sqlalchemy==2.0.35
