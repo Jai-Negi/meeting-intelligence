@@ -103,6 +103,7 @@ def test_upload_with_path_in_filename_is_saved_inside_uploads(
     assert saved[0].is_file()
     assert not (tmp_path / "escape.mp3").exists()
 
+
 def test_unsupported_file_type_is_rejected_and_nothing_is_stored(client, no_background, tmp_path):
     response = _upload(client, name="notes.txt", content=b"just some text")
 
@@ -113,12 +114,13 @@ def test_unsupported_file_type_is_rejected_and_nothing_is_stored(client, no_back
     assert not uploads.exists() or list(uploads.iterdir()) == []
 
 
-def test_empty_file_is_rejected(client, no_background):
+def test_empty_file_is_rejected(client, no_background, tmp_path):
     response = _upload(client, content=b"")
 
     assert response.status_code == 400
     assert "empty" in response.json()["detail"]
     assert _meeting_count() == 0
+    assert list((tmp_path / "uploads").iterdir()) == []
 
 
 def test_oversized_file_is_rejected(client, no_background, monkeypatch):
@@ -129,6 +131,29 @@ def test_oversized_file_is_rejected(client, no_background, monkeypatch):
     assert response.status_code == 400
     assert "exceeds" in response.json()["detail"]
     assert _meeting_count() == 0
+
+
+def test_oversized_file_leaves_no_partial_file_on_disk(client, no_background, monkeypatch, tmp_path):
+    monkeypatch.setattr(routes_meetings.settings, "max_upload_size_mb", 1)
+    monkeypatch.setattr(routes_meetings, "UPLOAD_CHUNK_BYTES", 64 * 1024)
+
+    response = _upload(client, content=b"x" * (3 * 1024 * 1024))
+
+    assert response.status_code == 400
+    assert "exceeds the 1MB limit" in response.json()["detail"]
+    assert list((tmp_path / "uploads").iterdir()) == []
+
+
+def test_upload_larger_than_one_chunk_is_saved_intact(client, no_background, monkeypatch, tmp_path):
+    monkeypatch.setattr(routes_meetings, "UPLOAD_CHUNK_BYTES", 1000)
+    content = bytes(range(256)) * 50
+
+    response = _upload(client, content=content)
+
+    assert response.status_code == 200
+    saved = list((tmp_path / "uploads").iterdir())
+    assert len(saved) == 1
+    assert saved[0].read_bytes() == content
 
 
 # fetching results
