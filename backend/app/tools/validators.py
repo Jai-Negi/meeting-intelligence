@@ -18,17 +18,10 @@ class UploadValidationError(Exception):
     """Raised when an uploaded file fails validation before processing starts."""
 
 
-def validate_upload_file(
-    filename: str | None,
-    size_bytes: int,
-    max_size_mb: int,
-    allowed_extensions: set[str] = ALLOWED_AUDIO_EXTENSIONS,
+def validate_upload_name(
+    filename: str | None, allowed_extensions: set[str] = ALLOWED_AUDIO_EXTENSIONS
 ) -> None:
-    """
-    Checks an uploaded file's name and size before it is saved to disk
-    or handed to Whisper. Raises UploadValidationError with a clear,
-    user facing message on the first problem found.
-    """
+    """Checks the filename and type, which can be done before any bytes are read."""
     if not filename:
         raise UploadValidationError("the uploaded file has no filename")
 
@@ -39,12 +32,28 @@ def validate_upload_file(
             f"unsupported file type '{extension or 'unknown'}'. Allowed types: {allowed}"
         )
 
+
+def validate_upload_size(size_bytes: int, max_size_mb: int) -> None:
+    """Checks the size, so it can be called once the whole file has been received."""
     if size_bytes <= 0:
         raise UploadValidationError("the uploaded file is empty")
 
-    max_size_bytes = max_size_mb * 1024 * 1024
-    if size_bytes > max_size_bytes:
+    if size_bytes > max_size_mb * 1024 * 1024:
         size_mb = size_bytes / (1024 * 1024)
         raise UploadValidationError(
             f"file is {size_mb:.1f}MB, which exceeds the {max_size_mb}MB limit"
         )
+
+
+def validate_upload_file(
+    filename: str | None,
+    size_bytes: int,
+    max_size_mb: int,
+    allowed_extensions: set[str] = ALLOWED_AUDIO_EXTENSIONS,
+) -> None:
+    """
+    Checks an uploaded file's name and size. Raises UploadValidationError
+    with a clear, user facing message on the first problem found.
+    """
+    validate_upload_name(filename, allowed_extensions)
+    validate_upload_size(size_bytes, max_size_mb)
