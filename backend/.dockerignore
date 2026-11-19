@@ -10,3 +10,10 @@ uploads/
 .gitignore
 Dockerfile
 docker-compose.yml
+Dockerfile.hosted
+data/
+tests/
+pytest.ini
+requirements-dev.txt
+.env.*
+!.env.example
