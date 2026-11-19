@@ -2,12 +2,28 @@ from pathlib import Path
 
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".mp4", ".webm", ".ogg", ".flac", ".aac"}
 
+# Groq's hosted Whisper does not accept aac, so it is refused up front rather
+# than failing later in the background job.
+GROQ_AUDIO_EXTENSIONS = ALLOWED_AUDIO_EXTENSIONS - {".aac"}
+
+
+def allowed_extensions_for(transcription_provider: str) -> set[str]:
+    """The file types the active transcriber can actually read."""
+    if transcription_provider == "groq":
+        return GROQ_AUDIO_EXTENSIONS
+    return ALLOWED_AUDIO_EXTENSIONS
+
 
 class UploadValidationError(Exception):
     """Raised when an uploaded file fails validation before processing starts."""
 
 
-def validate_upload_file(filename: str | None, size_bytes: int, max_size_mb: int) -> None:
+def validate_upload_file(
+    filename: str | None,
+    size_bytes: int,
+    max_size_mb: int,
+    allowed_extensions: set[str] = ALLOWED_AUDIO_EXTENSIONS,
+) -> None:
     """
     Checks an uploaded file's name and size before it is saved to disk
     or handed to Whisper. Raises UploadValidationError with a clear,
@@ -17,8 +33,8 @@ def validate_upload_file(filename: str | None, size_bytes: int, max_size_mb: int
         raise UploadValidationError("the uploaded file has no filename")
 
     extension = Path(filename).suffix.lower()
-    if extension not in ALLOWED_AUDIO_EXTENSIONS:
-        allowed = ", ".join(sorted(ALLOWED_AUDIO_EXTENSIONS))
+    if extension not in allowed_extensions:
+        allowed = ", ".join(sorted(allowed_extensions))
         raise UploadValidationError(
             f"unsupported file type '{extension or 'unknown'}'. Allowed types: {allowed}"
         )
