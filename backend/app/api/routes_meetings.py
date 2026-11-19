@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.tools.validators import (
     UploadValidationError,
     allowed_extensions_for,
-    validate_upload_file,
+    validate_upload_name,
+    validate_upload_size,
 )
 from app.agents.action_item_agent import ActionItemAgent
 from app.agents.decision_agent import DecisionAgent
@@ -167,20 +168,18 @@ async def _process_extractions(meeting_id: str, transcript_text: str) -> None:
         db.close()
 
 
+UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
 @router.post("/upload", response_model=MeetingUploadResponse)
 async def upload_meeting(
     background_tasks: BackgroundTasks,
     file: UploadFile,
     db: Session = Depends(get_db),
 ) -> MeetingUploadResponse:
-    contents = await file.read()
-
     try:
-        validate_upload_file(
-            filename=file.filename,
-            size_bytes=len(contents),
-            max_size_mb=settings.effective_max_upload_mb,
-            allowed_extensions=allowed_extensions_for(settings.transcription_provider),
+        validate_upload_name(
+            file.filename, allowed_extensions_for(settings.transcription_provider)
         )
     except UploadValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -193,7 +192,23 @@ async def upload_meeting(
     # or "C:\\temp\\x.mp3" can never place the file outside the uploads folder.
     safe_name = Path(file.filename.replace("\\", "/")).name
     destination = upload_dir / f"{job_id}_{safe_name}"
-    destination.write_bytes(contents)
+
+    # Copy the upload to disk in chunks rather than reading it all into memory,
+    # and stop as soon as it passes the limit so a huge file is never fully stored.
+    max_size_mb = settings.effective_max_upload_mb
+    max_size_bytes = max_size_mb * 1024 * 1024
+    size_bytes = 0
+    try:
+        with destination.open("wb") as out:
+            while chunk := await file.read(UPLOAD_CHUNK_BYTES):
+                size_bytes += len(chunk)
+                if size_bytes > max_size_bytes:
+                    raise UploadValidationError(f"file exceeds the {max_size_mb}MB limit")
+                out.write(chunk)
+        validate_upload_size(size_bytes, max_size_mb)
+    except UploadValidationError as exc:
+        destination.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(exc))
 
     meeting = Meeting(
         id=job_id,
