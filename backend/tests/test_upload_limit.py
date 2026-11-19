@@ -44,3 +44,20 @@ def test_the_same_upload_is_fine_with_local_transcription(client, no_background,
     monkeypatch.setattr(config, "GROQ_MAX_UPLOAD_MB", 1)
 
     assert _upload(client).status_code == 200
+
+
+def test_aac_is_refused_up_front_with_groq_transcription(client, no_background, monkeypatch):
+    monkeypatch.setattr(routes_meetings.settings, "transcription_provider", "groq")
+
+    response = client.post("/meetings/upload", files={"file": ("call.aac", b"x" * 1024, "audio/aac")})
+
+    assert response.status_code == 400
+    assert "unsupported file type '.aac'" in response.json()["detail"]
+
+
+def test_aac_is_accepted_with_local_transcription(client, no_background, monkeypatch):
+    monkeypatch.setattr(routes_meetings.settings, "transcription_provider", "local")
+
+    response = client.post("/meetings/upload", files={"file": ("call.aac", b"x" * 1024, "audio/aac")})
+
+    assert response.status_code == 200
