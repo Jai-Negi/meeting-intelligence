@@ -28,6 +28,9 @@ class TranscriptionAgent(BaseAgent):
     def __init__(self, model_size: str = "base", provider: str | None = None) -> None:
         self.model_size = model_size
         self.provider = provider or get_settings().transcription_provider
+        # Local Whisper runs in a thread that a timeout cannot stop, so retrying
+        # would start a second transcription next to the one still running.
+        self.retry_on_timeout = self.provider != "local"
 
     async def run(self, file_path: str | Path, **kwargs: Any) -> TranscriptResult:
         if self.provider == "groq":
