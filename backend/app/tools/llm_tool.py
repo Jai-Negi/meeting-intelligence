@@ -3,12 +3,23 @@ import logging
 import httpx
 
 from app.config import get_settings
+from app.errors import PermanentError, is_permanent_http_status
 
 logger = logging.getLogger(__name__)
 
 
 class LLMError(Exception):
     pass
+
+
+class LLMPermanentError(LLMError, PermanentError):
+    """An LLM failure that retrying cannot fix, such as a missing key or a rejected request."""
+
+
+def _http_error(provider: str, exc: httpx.HTTPError) -> LLMError:
+    if isinstance(exc, httpx.HTTPStatusError) and is_permanent_http_status(exc.response.status_code):
+        return LLMPermanentError(f"{provider} rejected the request: {exc}")
+    return LLMError(f"{provider} call failed: {exc}")
 
 
 async def generate_completion(prompt: str, system: str | None = None) -> str:
@@ -35,7 +46,7 @@ async def generate_completion(prompt: str, system: str | None = None) -> str:
 
 async def _call_groq(prompt: str, system: str | None, api_key: str) -> str:
     if not api_key:
-        raise LLMError("groq_api_key is not set")
+        raise LLMPermanentError("groq_api_key is not set")
 
     messages = []
     if system:
@@ -53,7 +64,7 @@ async def _call_groq(prompt: str, system: str | None, api_key: str) -> str:
             data = response.json()
     except httpx.HTTPError as exc:
         logger.error("groq call failed", extra={"error": str(exc)})
-        raise LLMError(f"groq call failed: {exc}") from exc
+        raise _http_error("groq", exc) from exc
 
     try:
         return data["choices"][0]["message"]["content"].strip()
@@ -63,7 +74,7 @@ async def _call_groq(prompt: str, system: str | None, api_key: str) -> str:
 
 async def _call_anthropic(prompt: str, system: str | None, api_key: str) -> str:
     if not api_key:
-        raise LLMError("anthropic_api_key is not set")
+        raise LLMPermanentError("anthropic_api_key is not set")
 
     import anthropic
 
@@ -78,6 +89,9 @@ async def _call_anthropic(prompt: str, system: str | None, api_key: str) -> str:
         )
     except Exception as exc:
         logger.error("anthropic call failed", extra={"error": str(exc)})
+        status_code = getattr(exc, "status_code", None)
+        if isinstance(status_code, int) and is_permanent_http_status(status_code):
+            raise LLMPermanentError(f"anthropic rejected the request: {exc}") from exc
         raise LLMError(f"anthropic call failed: {exc}") from exc
 
     text_blocks = [block.text for block in response.content if block.type == "text"]
@@ -97,6 +111,6 @@ async def _call_ollama(prompt: str, system: str | None, base_url: str) -> str:
             data = response.json()
     except httpx.HTTPError as exc:
         logger.error("ollama call failed", extra={"error": str(exc)})
-        raise LLMError(f"ollama call failed: {exc}") from exc
+        raise _http_error("ollama", exc) from exc
 
     return data.get("response", "").strip()
