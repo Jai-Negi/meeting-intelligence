@@ -76,3 +76,11 @@ def test_a_transcriber_failure_is_reported_with_its_message(monkeypatch):
 
     assert not result.success
     assert "Groq accepts at most 25MB" in result.error
+
+
+def test_local_transcription_is_not_retried_after_a_timeout():
+    assert TranscriptionAgent(provider="local").retry_on_timeout is False
+
+
+def test_groq_transcription_is_retried_after_a_timeout():
+    assert TranscriptionAgent(provider="groq").retry_on_timeout is True
