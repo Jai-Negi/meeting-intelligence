@@ -1,89 +1,130 @@
 # Meeting Intelligence Engine
 
-![Backend tests](https://github.com/Jai-Negi/meeting-intelligence/actions/workflows/backend-tests.yml/badge.svg)
-![Frontend checks](https://github.com/Jai-Negi/meeting-intelligence/actions/workflows/frontend-checks.yml/badge.svg)
+> Upload a meeting recording and get back a timestamped transcript, action items with owners and due dates, key decisions, a topic timeline and a follow-up email draft.
 
-A multi agent system that takes a recorded meeting and turns it into something actually useful: a clean transcript, a list of action items, key decisions, a timeline, and a follow up email draft. The goal is to save people from re watching an hour long call just to remember what was agreed on.
+[![Backend tests](https://img.shields.io/github/actions/workflow/status/Jai-Negi/meeting-intelligence/backend-tests.yml?branch=main&label=backend%20tests&logo=githubactions&logoColor=white)](https://github.com/Jai-Negi/meeting-intelligence/actions/workflows/backend-tests.yml) [![Frontend checks](https://img.shields.io/github/actions/workflow/status/Jai-Negi/meeting-intelligence/frontend-checks.yml?branch=main&label=frontend%20checks&logo=githubactions&logoColor=white)](https://github.com/Jai-Negi/meeting-intelligence/actions/workflows/frontend-checks.yml) ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white) ![Next.js](https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## What it does
+<!-- Demo: add a short GIF of uploading a recording and the results page, e.g. docs/demo.gif -->
 
-You upload a meeting recording. The system transcribes it using Whisper, then runs a set of agents on top of that transcript to pull out structured information. Right now that includes:
+## Why I built it
 
-- Transcription with timestamped segments
-- Action items, so you know who is doing what
-- A timeline of what was discussed and when
-- Key decisions that were made during the call
-- A follow up email draft you can edit and copy
+Nobody wants to rewatch an hour-long call to remember who agreed to do what. I wanted a project that goes beyond a single LLM call and deals with real production concerns: background jobs, failure recovery, swappable providers, tests and CI.
 
-Each of these is handled by its own agent, built on a shared base class that takes care of retries, timeouts, and basic guardrails so one failing agent does not take down the whole pipeline.
+## Features
 
-## Why I built this
+- **Transcription** with timestamped segments, using Whisper locally or Groq's hosted Whisper
+- **Action items** with owner and due date, **key decisions** and a **topic timeline**, each extracted by its own specialised agent
+- **Follow-up email draft** generated on demand, ready to edit and copy
+- **Concurrent extraction:** the three extraction agents run in parallel with `asyncio.gather`
+- **Reliable by design:** a shared agent base class handles retries, exponential backoff with jitter, timeouts, and separates permanent errors from retryable ones, so one failing agent doesn't break the whole job
+- **Swappable providers:** Groq, Anthropic or a local Ollama model for the LLM, and local or Groq Whisper for transcription, all chosen by configuration
+- **Meeting history:** browse past meetings, retry failed jobs and delete old ones from the Next.js UI
 
-I wanted a project that goes beyond a simple wrapper around an LLM call. This one deals with real production concerns: async job handling, structured logging, error recovery, and a system design that can scale past a single script. It is also something I actually plan to use myself once the core features are working.
+## How it works
+
+```mermaid
+flowchart LR
+    UI[Next.js UI] -- upload --> API[FastAPI]
+    API --> JOB[Background job]
+    JOB --> T[Transcription agent<br/>Whisper local or Groq]
+    T --> A[Action item agent]
+    T --> D[Decision agent]
+    T --> TL[Timeline agent]
+    A & D & TL --> DB[(SQLAlchemy<br/>SQLite or Postgres)]
+    UI -- request email --> E[Email agent] --> DB
+    DB --> UI
+```
+
+Each agent is a single-purpose step in a fixed pipeline. They share one base class, so retry and timeout behaviour is consistent and tested once.
 
 ## Tech stack
 
-Backend is built with FastAPI and Python. Each agent is a small class on a shared base that handles retries and timeouts, and the three extraction agents run concurrently with asyncio. The LLM layer can run through Groq, locally through Ollama, or against the Anthropic API depending on what is available. Transcription runs on Whisper, either locally or through Groq. Data is stored using SQLAlchemy, starting with SQLite for local development and moving to Postgres for anything beyond that. The frontend is Next.js. The backend is containerized with Docker so it can be deployed anywhere.
+| Area | Technologies |
+|---|---|
+| Backend | Python 3.11, FastAPI, Pydantic, SQLAlchemy, Alembic |
+| LLMs | Groq, Anthropic, Ollama (selected via `LLM_PROVIDER`) |
+| Transcription | OpenAI Whisper (local) or Groq Whisper (hosted) |
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| Quality | pytest, GitHub Actions, ESLint, TypeScript checks, Dependabot |
+| Deployment | Docker (full image with local Whisper, slim hosted image without torch) |
 
-## Project status
+## Quick start
 
-This is an active work in progress. Transcription, action items, timeline, decisions, history, retry, and follow-up email drafts are in place, along with a Next.js UI for uploading recordings and reviewing past meetings.
+```bash
+git clone https://github.com/Jai-Negi/meeting-intelligence.git
+cd meeting-intelligence
+cp backend/.env.example backend/.env   # add your Groq or Anthropic key
+docker compose -f docker/docker-compose.yml up --build
+```
 
-## Project structure
+The API runs at http://localhost:8000 (interactive docs at `/docs`). Then start the UI:
 
-The backend lives in its own folder with a clear separation between agents, tools, database models, schemas, and API routes. Tests sit alongside the backend code. The frontend lives in its own folder. The docker folder holds a compose file for running the backend locally.
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## Getting started
+Open http://localhost:3000. Set `NEXT_PUBLIC_API_URL` if the API runs somewhere other than port 8000.
 
-In the backend folder, copy `.env.example` to `.env` and fill in the keys you use. Then create a virtual environment, install the requirements and start the API:
+### Run without Docker
 
-    cd backend
-    python3.11 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    python -m uvicorn app.main:app --reload
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
-Local transcription needs ffmpeg, which you can install on macOS with `brew install ffmpeg`. If you would rather not run Whisper on your own machine, set TRANSCRIPTION_PROVIDER to groq and install `requirements-base.txt` instead, which leaves out Whisper and torch.
+## Configuration
 
-In another terminal, from the frontend folder, run `npm install` and `npm run dev`, then open http://localhost:3000. The API docs are at http://localhost:8000/docs.
+| Variable | Options | Purpose |
+|---|---|---|
+| `LLM_PROVIDER` | `groq`, `anthropic`, `ollama` | Model used for extraction and emails |
+| `TRANSCRIPTION_PROVIDER` | `local`, `groq` | Where Whisper runs |
+| `GROQ_API_KEY` / `ANTHROPIC_API_KEY` | | Keys for hosted providers |
+| `OLLAMA_BASE_URL` | | Local Ollama server |
+| `MAX_UPLOAD_SIZE_MB` | default 500 | Upload limit (capped at 25 MB when using Groq Whisper) |
+| `DATABASE_URL` | SQLite or Postgres URL | Storage |
+
+See `backend/.env.example` for the full list.
 
 ## API
 
-The backend exposes the endpoints below. When the server is running you can also try them in the browser at http://localhost:8000/docs.
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/meetings/upload` | Upload a recording and start processing |
+| GET | `/meetings/{job_id}` | Get the transcript and extracted results |
+| GET | `/meetings` | List past meetings |
+| POST | `/meetings/{job_id}/retry` | Retry a failed job |
+| POST | `/meetings/{job_id}/email` | Generate a follow-up email draft |
+| DELETE | `/meetings/{job_id}` | Delete a meeting and its recording |
 
-`GET /health` returns a simple status so you can check the server is up.
+## Testing and CI
 
-`POST /meetings/upload` accepts a recording as multipart form data in a field called file. Allowed types are mp3, m4a, wav, mp4, webm, ogg, flac and aac, up to the size set by MAX_UPLOAD_SIZE_MB (500 by default). When transcription runs through Groq, aac is refused and the limit is capped at 25 MB, because that is what Groq's free tier accepts. It returns a job id straight away while transcription and analysis carry on in the background. A file that is the wrong type, empty or too large is rejected with a 400 and a plain explanation.
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest tests/
+```
 
-`GET /meetings/{job_id}` returns the status of a job, which is processing, completed or failed. Once the transcript is ready it includes the text, language and timestamped segments, and once analysis finishes it also includes action items, timeline events and decisions. A failed job includes the reason.
+- **126 backend tests** covering the agent base class (retries, backoff, timeouts), each agent, the LLM and Whisper tools, validators, upload limits and every API route
+- **Backend CI** runs the full suite twice: once with local Whisper installed, and once on the slim hosted install to confirm it works without torch
+- **Frontend CI** runs a type check, lint and production build on every push
+- **Dependabot** keeps Python and npm dependencies up to date
 
-`GET /meetings` lists past meetings, newest first, without their full results. It takes an optional limit between 1 and 200, and defaults to 50.
+## What I learned
 
-`DELETE /meetings/{job_id}` removes a meeting along with its transcript, extracted results and uploaded audio. It returns a 404 for an unknown job and a 409 while the meeting is still processing.
-
-`POST /meetings/{job_id}/retry` runs the pipeline again for a failed meeting, using the audio saved at upload, and returns a 202 while the work carries on in the background. It returns a 409 if the meeting has not failed or if the audio file is no longer on the server, and a 404 for an unknown job.
-
-`POST /meetings/{job_id}/email` drafts a follow up email for a finished meeting from its transcript, action items and decisions, and returns a subject and a body. Nothing is stored, so asking again simply gives a fresh draft. It returns a 409 until the meeting has finished processing, a 404 for an unknown job, and a 502 with the reason if the language model could not produce a usable draft.
-
-If the server restarts while a job is processing, that job can never finish, so on the next startup it is marked as failed with an explanation.
-
-## Running the tests
-
-From the backend folder, install the development requirements and run pytest:
-
-    pip install -r requirements-dev.txt
-    python -m pytest tests/ -v
-
-The tests use a throwaway database and uploads folder, so they never touch your real data. The transcription and analysis agents are replaced with fakes, which means the tests need no API keys, no Whisper model and finish in about a second. CI runs the suite twice, once with the full requirements and once with only the base requirements, to prove the slim install works without Whisper.
-
-## Docker
-
-`backend/Dockerfile` builds the full image with local Whisper, and `docker/docker-compose.yml` runs it with the database and uploads kept on your machine. `backend/Dockerfile.hosted` builds a much smaller image without Whisper or torch that transcribes through Groq and listens on the port given in the PORT environment variable, which suits most hosting platforms.
+- Separating retryable errors (rate limits, timeouts, 5xx) from permanent ones (bad requests, auth failures) saves wasted calls and gives clearer failure messages
+- Running the three independent extraction agents concurrently means a job waits for the slowest agent, not all three in sequence
+- Shipping two Docker images, one with local Whisper and a slim one using Groq, kept the hosted image several GB smaller
 
 ## Roadmap
 
-The remaining work is meeting summaries, calendar integration, and tightening the dashboard. Transcription, extraction, follow-up emails, and the frontend are already in the repo.
+- A bot that joins meetings live instead of working from recordings
+- Speaker identification in transcripts
+- Export of action items to task tools
 
 ## License
 
-MIT. See `LICENSE`.
+MIT
