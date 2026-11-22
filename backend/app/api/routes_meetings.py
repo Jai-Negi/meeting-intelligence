@@ -41,7 +41,35 @@ router = APIRouter(prefix="/meetings", tags=["meetings"])
 settings = get_settings()
 
 
+UNEXPECTED_ERROR_MESSAGE = "processing stopped because of an unexpected error, please retry"
+
+
 async def _process_transcription(meeting_id: str, file_path: Path) -> None:
+    """
+    Background entry point for one meeting. Whatever goes wrong inside the
+    pipeline, the meeting ends as completed or failed, never stuck on
+    processing until the next restart.
+    """
+    try:
+        await _run_pipeline(meeting_id, file_path)
+    except Exception:
+        logger.exception("pipeline crashed", extra={"meeting_id": meeting_id})
+        _mark_failed_if_processing(meeting_id, UNEXPECTED_ERROR_MESSAGE)
+
+
+def _mark_failed_if_processing(meeting_id: str, error: str) -> None:
+    db = SessionLocal()
+    try:
+        meeting = db.query(Meeting).filter_by(id=meeting_id).first()
+        if meeting is not None and meeting.status == "processing":
+            meeting.status = "failed"
+            meeting.error = error
+            db.commit()
+    finally:
+        db.close()
+
+
+async def _run_pipeline(meeting_id: str, file_path: Path) -> None:
     """
     Runs in the background after upload. Transcribes the recording,
     then if that succeeds, runs action item, timeline, and decision
@@ -109,6 +137,16 @@ async def _process_extractions(meeting_id: str, transcript_text: str) -> None:
         decision_agent.execute(transcript_text=transcript_text),
     )
 
+    failures = [
+        f"{step} could not be extracted: {result.error}"
+        for step, result in (
+            ("action items", action_result),
+            ("timeline", timeline_result),
+            ("decisions", decision_result),
+        )
+        if not result.success
+    ]
+
     db = SessionLocal()
     try:
         if action_result.success:
@@ -158,9 +196,14 @@ async def _process_extractions(meeting_id: str, transcript_text: str) -> None:
                 extra={"meeting_id": meeting_id, "error": decision_result.error},
             )
 
+        # Partial results are kept, but a failed step is recorded on the meeting
+        # so "no action items" can be told apart from "action items failed".
+        # If every step failed there is nothing useful, so the meeting fails
+        # and can be retried.
         meeting = db.query(Meeting).filter_by(id=meeting_id).first()
         if meeting is not None:
-            meeting.status = "completed"
+            meeting.status = "failed" if len(failures) == 3 else "completed"
+            meeting.error = "; ".join(failures) or None
 
         db.commit()
         logger.info("extractions saved", extra={"meeting_id": meeting_id})
