@@ -241,6 +241,72 @@ def test_one_failing_extraction_does_not_block_the_others(client, monkeypatch):
     assert body["action_items"] == []
     assert len(body["timeline"]) == 1
     assert len(body["decisions"]) == 1
+    assert body["error"] == "action items could not be extracted: llm timeout"
+
+
+def test_meeting_fails_when_every_extraction_fails(client, monkeypatch):
+    job_id = _seed_meeting()
+
+    monkeypatch.setattr(routes_meetings, "TranscriptionAgent", _fake_agent(_ok(_transcript())))
+    monkeypatch.setattr(routes_meetings, "ActionItemAgent", _fake_agent(_failed("a")))
+    monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_failed("b")))
+    monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_failed("c")))
+
+    asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
+
+    body = client.get(f"/meetings/{job_id}").json()
+    assert body["status"] == "failed"
+    assert body["error"] == (
+        "action items could not be extracted: a; "
+        "timeline could not be extracted: b; "
+        "decisions could not be extracted: c"
+    )
+    assert body["text"] == "We agreed to ship on Friday."
+
+
+def test_successful_pipeline_records_no_error(client, monkeypatch):
+    job_id = _seed_meeting()
+
+    monkeypatch.setattr(routes_meetings, "TranscriptionAgent", _fake_agent(_ok(_transcript())))
+    monkeypatch.setattr(routes_meetings, "ActionItemAgent", _fake_agent(_ok([])))
+    monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_ok([])))
+    monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_ok([])))
+
+    asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
+
+    body = client.get(f"/meetings/{job_id}").json()
+    assert body["status"] == "completed"
+    assert body["error"] is None
+
+
+def test_an_unexpected_crash_marks_the_meeting_failed(client, monkeypatch):
+    job_id = _seed_meeting()
+
+    async def crash(*args, **kwargs):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(routes_meetings, "TranscriptionAgent", _fake_agent(_ok(_transcript())))
+    monkeypatch.setattr(routes_meetings, "_process_extractions", crash)
+
+    asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
+
+    body = client.get(f"/meetings/{job_id}").json()
+    assert body["status"] == "failed"
+    assert body["error"] == routes_meetings.UNEXPECTED_ERROR_MESSAGE
+
+
+def test_a_crash_does_not_overwrite_a_meeting_that_already_finished(client, monkeypatch):
+    job_id = _seed_meeting()
+    db = SessionLocal()
+    try:
+        db.get(Meeting, job_id).status = "completed"
+        db.commit()
+    finally:
+        db.close()
+
+    routes_meetings._mark_failed_if_processing(job_id, "should not be written")
+
+    assert client.get(f"/meetings/{job_id}").json()["status"] == "completed"
 
 
 def test_meeting_is_only_completed_once_extractions_are_saved(client, monkeypatch):
