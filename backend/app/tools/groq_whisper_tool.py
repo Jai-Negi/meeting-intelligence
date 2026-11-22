@@ -5,6 +5,7 @@ from pathlib import Path
 import httpx
 
 from app.config import GROQ_MAX_UPLOAD_MB, get_settings
+from app.errors import PermanentError, is_permanent_http_status
 from app.tools.whisper_tool import TranscriptResult, TranscriptSegment
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,10 @@ GROQ_TRANSCRIPTION_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
 class GroqTranscriptionError(Exception):
     """Raised when Groq's hosted Whisper cannot transcribe a file."""
+
+
+class GroqTranscriptionPermanentError(GroqTranscriptionError, PermanentError):
+    """A Groq transcription failure that retrying cannot fix."""
 
 
 def _describe_error(response: httpx.Response) -> str:
@@ -39,13 +44,13 @@ async def transcribe_audio_groq(
         raise FileNotFoundError(f"audio file not found: {file_path}")
 
     if not settings.groq_api_key:
-        raise GroqTranscriptionError(
+        raise GroqTranscriptionPermanentError(
             "GROQ_API_KEY is not set, it is needed to transcribe with Groq"
         )
 
     size_mb = file_path.stat().st_size / (1024 * 1024)
     if size_mb > GROQ_MAX_UPLOAD_MB:
-        raise GroqTranscriptionError(
+        raise GroqTranscriptionPermanentError(
             f"audio file is {size_mb:.1f}MB, Groq accepts at most {GROQ_MAX_UPLOAD_MB}MB per file"
         )
 
@@ -63,6 +68,8 @@ async def transcribe_audio_groq(
         )
 
     if response.status_code != 200:
+        if is_permanent_http_status(response.status_code):
+            raise GroqTranscriptionPermanentError(_describe_error(response))
         raise GroqTranscriptionError(_describe_error(response))
 
     payload = response.json()
