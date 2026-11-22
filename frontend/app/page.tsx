@@ -200,6 +200,16 @@ export default function Home() {
             {fileName}
           </p>
 
+          {result.error ? (
+            <div
+              className="rounded-sm px-4 py-3 text-[14px]"
+              style={{ background: "var(--amber-soft)", color: "var(--amber)" }}
+            >
+              Some of the analysis could not be completed, so parts below may be missing.{" "}
+              {result.error}
+            </div>
+          ) : null}
+
           <section>
             <div className="mb-4 flex items-baseline justify-between">
               <h2 className="text-[13px] font-medium" style={{ color: "var(--ink-soft)" }}>
