@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from app.config import get_settings
+from app.errors import PermanentError
 from app.tools import groq_whisper_tool
 from app.tools.groq_whisper_tool import GroqTranscriptionError, transcribe_audio_groq
 
@@ -144,3 +145,28 @@ def test_non_json_error_body_is_still_reported(audio_file, groq):
 
     with pytest.raises(GroqTranscriptionError, match="status 502: bad gateway from upstream"):
         _run(audio_file)
+
+
+def test_a_missing_key_is_permanent(audio_file, groq, monkeypatch):
+    monkeypatch.setattr(get_settings(), "groq_api_key", "")
+
+    with pytest.raises(PermanentError):
+        asyncio.run(transcribe_audio_groq(audio_file))
+
+
+def test_a_rejected_request_is_permanent(audio_file, groq):
+    groq.status = 401
+    groq.body = {"error": {"message": "invalid api key"}}
+
+    with pytest.raises(PermanentError, match="invalid api key"):
+        asyncio.run(transcribe_audio_groq(audio_file))
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_rate_limits_and_outages_stay_retryable(audio_file, groq, status):
+    groq.status = status
+    groq.body = {"error": {"message": "try again later"}}
+
+    with pytest.raises(GroqTranscriptionError) as exc:
+        asyncio.run(transcribe_audio_groq(audio_file))
+    assert not isinstance(exc.value, PermanentError)
