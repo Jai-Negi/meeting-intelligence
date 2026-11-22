@@ -5,12 +5,28 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # One PR for all minor and patch updates. Major versions still get their
+      # own PR, since they can change behaviour and need reading.
+      backend-minor-and-patch:
+        update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # react and react-dom must move together or npm refuses to install.
+      react:
+        patterns: [react, react-dom, "@types/react", "@types/react-dom"]
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Node type definitions should match the Node version CI runs (22),
+      # not the newest Node release.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
