@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -48,6 +48,9 @@ class Meeting(Base):
     )
     decisions: Mapped[list["Decision"]] = relationship(
         back_populates="meeting", cascade="all, delete-orphan"
+    )
+    summary: Mapped["Summary | None"] = relationship(
+        back_populates="meeting", uselist=False, cascade="all, delete-orphan"
     )
 
 
@@ -141,3 +144,22 @@ class Decision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     meeting: Mapped["Meeting"] = relationship(back_populates="decisions")
+
+
+class Summary(Base):
+    """
+    A short overview of a meeting and its key points. Populated by the
+    summary agent. It lives in its own table, one row per meeting, so that
+    existing databases pick it up through create_all without a migration.
+    """
+
+    __tablename__ = "summaries"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_uuid)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id"), nullable=False, unique=True)
+    overview: Mapped[str] = mapped_column(Text, nullable=False)
+    key_points: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    meeting: Mapped["Meeting"] = relationship(back_populates="summary")
