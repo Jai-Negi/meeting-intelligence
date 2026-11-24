@@ -2,6 +2,7 @@ from app.database.models import (
     ActionItem,
     Decision,
     Meeting,
+    Summary,
     TimelineEvent,
     Transcript,
     TranscriptSegment,
@@ -21,6 +22,7 @@ def _seed_full_meeting(file_path: str, status: str = "completed", job_id: str = 
         db.add(ActionItem(meeting_id=job_id, description="do a thing"))
         db.add(TimelineEvent(meeting_id=job_id, topic="t", summary="s"))
         db.add(Decision(meeting_id=job_id, decision="d"))
+        db.add(Summary(meeting_id=job_id, overview="o", key_points=["k"]))
         db.commit()
     finally:
         db.close()
@@ -37,6 +39,7 @@ def _row_counts() -> dict:
             "action_items": db.query(ActionItem).count(),
             "timeline_events": db.query(TimelineEvent).count(),
             "decisions": db.query(Decision).count(),
+            "summaries": db.query(Summary).count(),
         }
     finally:
         db.close()
@@ -58,6 +61,7 @@ def test_delete_removes_meeting_and_everything_attached(client, tmp_path):
         "action_items": 0,
         "timeline_events": 0,
         "decisions": 0,
+        "summaries": 0,
     }
     assert not audio.exists()
     assert client.get(f"/meetings/{job_id}").status_code == 404
