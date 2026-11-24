@@ -1,6 +1,6 @@
 # Meeting Intelligence Engine
 
-> Upload a meeting recording and get back a timestamped transcript, action items with owners and due dates, key decisions, a topic timeline and a follow-up email draft.
+> Upload a meeting recording and get back a timestamped transcript, a short summary, action items with owners and due dates, key decisions, a topic timeline and a follow-up email draft.
 
 [![Backend tests](https://img.shields.io/github/actions/workflow/status/Jai-Negi/meeting-intelligence/backend-tests.yml?branch=main&label=backend%20tests&logo=githubactions&logoColor=white)](https://github.com/Jai-Negi/meeting-intelligence/actions/workflows/backend-tests.yml) [![Frontend checks](https://img.shields.io/github/actions/workflow/status/Jai-Negi/meeting-intelligence/frontend-checks.yml?branch=main&label=frontend%20checks&logo=githubactions&logoColor=white)](https://github.com/Jai-Negi/meeting-intelligence/actions/workflows/frontend-checks.yml) ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white) ![Next.js](https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow)
 
@@ -13,9 +13,10 @@ Nobody wants to rewatch an hour-long call to remember who agreed to do what. I w
 ## Features
 
 - **Transcription** with timestamped segments, using Whisper locally or Groq's hosted Whisper
+- **Meeting summary** with a short overview and the key points raised
 - **Action items** with owner and due date, **key decisions** and a **topic timeline**, each extracted by its own specialised agent
 - **Follow-up email draft** generated on demand, ready to edit and copy
-- **Concurrent extraction:** the three extraction agents run in parallel with `asyncio.gather`
+- **Concurrent extraction:** the four analysis agents run in parallel with `asyncio.gather`
 - **Reliable by design:** a shared agent base class handles retries, exponential backoff with jitter, timeouts, and separates permanent errors from retryable ones, so one failing agent doesn't break the whole job
 - **Swappable providers:** Groq, Anthropic or a local Ollama model for the LLM, and local or Groq Whisper for transcription, all chosen by configuration
 - **Meeting history:** browse past meetings, retry failed jobs and delete old ones from the Next.js UI
@@ -30,7 +31,8 @@ flowchart LR
     T --> A[Action item agent]
     T --> D[Decision agent]
     T --> TL[Timeline agent]
-    A & D & TL --> DB[(SQLAlchemy<br/>SQLite or Postgres)]
+    T --> S[Summary agent]
+    A & D & TL & S --> DB[(SQLAlchemy<br/>SQLite or Postgres)]
     UI -- request email --> E[Email agent] --> DB
     DB --> UI
 ```
@@ -108,7 +110,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/
 ```
 
-- **126 backend tests** covering the agent base class (retries, backoff, timeouts), each agent, the LLM and Whisper tools, validators, upload limits and every API route
+- **150 backend tests** covering the agent base class (retries, backoff, timeouts), each agent, the LLM and Whisper tools, validators, upload limits and every API route
 - **Backend CI** runs the full suite twice: once with local Whisper installed, and once on the slim hosted install to confirm it works without torch
 - **Frontend CI** runs a type check, lint and production build on every push
 - **Dependabot** keeps Python and npm dependencies up to date
@@ -116,7 +118,7 @@ python -m pytest tests/
 ## What I learned
 
 - Separating retryable errors (rate limits, timeouts, 5xx) from permanent ones (bad requests, auth failures) saves wasted calls and gives clearer failure messages
-- Running the three independent extraction agents concurrently means a job waits for the slowest agent, not all three in sequence
+- Running the four independent analysis agents concurrently means a job waits for the slowest agent, not all four in sequence
 - Shipping two Docker images, one with local Whisper and a slim one using Groq, kept the hosted image several GB smaller
 
 ## Roadmap
