@@ -10,6 +10,7 @@ type Segment = { start: number; end: number; text: string };
 type ActionItem = { description: string; owner: string | null; due_date: string | null };
 type TimelineEvent = { topic: string; summary: string; approx_time: string | null };
 type Decision = { decision: string; context: string | null };
+type Summary = { overview: string; key_points: string[] };
 type Status = "idle" | "uploading" | "processing" | "completed" | "failed";
 
 type MeetingResult = {
@@ -18,6 +19,7 @@ type MeetingResult = {
   text: string | null;
   language: string | null;
   segments: Segment[];
+  summary: Summary | null;
   action_items: ActionItem[];
   timeline: TimelineEvent[];
   decisions: Decision[];
@@ -208,6 +210,26 @@ export default function Home() {
               Some of the analysis could not be completed, so parts below may be missing.{" "}
               {result.error}
             </div>
+          ) : null}
+
+          {result.summary ? (
+            <section>
+              <h2 className="mb-4 text-[13px] font-medium" style={{ color: "var(--ink-soft)" }}>
+                Summary
+              </h2>
+              <p className="text-[15px] leading-relaxed" style={{ color: "var(--ink)" }}>
+                {result.summary.overview}
+              </p>
+              {result.summary.key_points.length > 0 ? (
+                <ul className="mt-4 list-disc space-y-2 pl-5">
+                  {result.summary.key_points.map((point, i) => (
+                    <li key={i} className="text-[14px] leading-relaxed" style={{ color: "var(--ink)" }}>
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
           ) : null}
 
           <section>
