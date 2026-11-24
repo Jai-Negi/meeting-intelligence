@@ -24,6 +24,11 @@ class DecisionResponse(BaseModel):
     context: str | None = None
 
 
+class SummaryResponse(BaseModel):
+    overview: str
+    key_points: list[str] = []
+
+
 class MeetingUploadResponse(BaseModel):
     job_id: str
     filename: str
@@ -36,6 +41,7 @@ class TranscriptResponse(BaseModel):
     text: str | None = None
     language: str | None = None
     segments: list[TranscriptSegmentResponse] = []
+    summary: SummaryResponse | None = None
     action_items: list[ActionItemResponse] = []
     timeline: list[TimelineEventResponse] = []
     decisions: list[DecisionResponse] = []
