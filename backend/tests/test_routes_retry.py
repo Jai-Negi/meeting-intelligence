@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from app.api import routes_meetings
-from app.database.models import ActionItem, Meeting, Transcript, TranscriptSegment
+from app.database.models import ActionItem, Meeting, Summary, Transcript, TranscriptSegment
 from app.database.session import SessionLocal
 
 
@@ -55,6 +55,11 @@ def _use_fake_agents(monkeypatch, transcription, actions=None):
     monkeypatch.setattr(routes_meetings, "ActionItemAgent", _fake_agent(_ok(actions or [])))
     monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_ok([])))
     monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_ok([])))
+    monkeypatch.setattr(
+        routes_meetings,
+        "SummaryAgent",
+        _fake_agent(_ok(SimpleNamespace(overview="Shipping on Friday.", key_points=[]))),
+    )
 
 
 def test_retry_reruns_the_pipeline_for_a_failed_meeting(client, monkeypatch, tmp_path):
@@ -97,6 +102,7 @@ def test_retry_clears_leftovers_so_results_are_not_duplicated(client, monkeypatc
         db.flush()
         db.add(TranscriptSegment(transcript_id=old.id, start=0.0, end=1.0, text="old text"))
         db.add(ActionItem(meeting_id=job_id, description="stale item"))
+        db.add(Summary(meeting_id=job_id, overview="stale overview", key_points=[]))
         db.commit()
     finally:
         db.close()
@@ -109,6 +115,8 @@ def test_retry_clears_leftovers_so_results_are_not_duplicated(client, monkeypatc
     assert body["text"] == "new text"
     assert [s["text"] for s in body["segments"]] == ["new text"]
     assert [a["description"] for a in body["action_items"]] == ["fresh item"]
+    assert body["status"] == "completed"
+    assert body["summary"]["overview"] == "Shipping on Friday."
 
 
 def test_retry_unknown_job_returns_404(client):
