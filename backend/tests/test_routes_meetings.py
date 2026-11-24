@@ -54,6 +54,13 @@ def _failed(message):
     return SimpleNamespace(success=False, data=None, error=message)
 
 
+def _summary():
+    return SimpleNamespace(
+        overview="The team agreed to ship on Friday.",
+        key_points=["Ship on Friday"],
+    )
+
+
 def _transcript():
     return SimpleNamespace(
         text="We agreed to ship on Friday.",
@@ -175,6 +182,7 @@ def test_fresh_upload_reports_processing_with_empty_results(client, no_backgroun
     assert body["action_items"] == []
     assert body["timeline"] == []
     assert body["decisions"] == []
+    assert body["summary"] is None
 
 
 # background processing pipeline, with the real agents swapped for fakes
@@ -190,6 +198,7 @@ def test_pipeline_saves_transcript_and_all_extractions(client, monkeypatch):
     monkeypatch.setattr(routes_meetings, "ActionItemAgent", _fake_agent(_ok([action])))
     monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_ok([event])))
     monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_ok([decision])))
+    monkeypatch.setattr(routes_meetings, "SummaryAgent", _fake_agent(_ok(_summary())))
 
     asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
 
@@ -203,6 +212,10 @@ def test_pipeline_saves_transcript_and_all_extractions(client, monkeypatch):
     ]
     assert body["timeline"][0]["topic"] == "Launch"
     assert body["decisions"][0]["decision"] == "Ship on Friday"
+    assert body["summary"] == {
+        "overview": "The team agreed to ship on Friday.",
+        "key_points": ["Ship on Friday"],
+    }
 
 
 def test_failed_transcription_marks_job_failed_and_skips_extraction(client, monkeypatch):
@@ -213,6 +226,7 @@ def test_failed_transcription_marks_job_failed_and_skips_extraction(client, monk
     monkeypatch.setattr(routes_meetings, "ActionItemAgent", _fake_agent(_ok([]), extraction_calls))
     monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_ok([]), extraction_calls))
     monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_ok([]), extraction_calls))
+    monkeypatch.setattr(routes_meetings, "SummaryAgent", _fake_agent(_ok(_summary()), extraction_calls))
 
     asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
 
@@ -232,6 +246,7 @@ def test_one_failing_extraction_does_not_block_the_others(client, monkeypatch):
     monkeypatch.setattr(routes_meetings, "ActionItemAgent", _fake_agent(_failed("llm timeout")))
     monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_ok([event])))
     monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_ok([decision])))
+    monkeypatch.setattr(routes_meetings, "SummaryAgent", _fake_agent(_ok(_summary())))
 
     asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
 
@@ -244,6 +259,25 @@ def test_one_failing_extraction_does_not_block_the_others(client, monkeypatch):
     assert body["error"] == "action items could not be extracted: llm timeout"
 
 
+def test_a_failed_summary_keeps_the_other_results(client, monkeypatch):
+    job_id = _seed_meeting()
+    decision = SimpleNamespace(decision="Ship on Friday", context=None)
+
+    monkeypatch.setattr(routes_meetings, "TranscriptionAgent", _fake_agent(_ok(_transcript())))
+    monkeypatch.setattr(routes_meetings, "ActionItemAgent", _fake_agent(_ok([])))
+    monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_ok([])))
+    monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_ok([decision])))
+    monkeypatch.setattr(routes_meetings, "SummaryAgent", _fake_agent(_failed("bad json")))
+
+    asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
+
+    body = client.get(f"/meetings/{job_id}").json()
+    assert body["status"] == "completed"
+    assert body["summary"] is None
+    assert len(body["decisions"]) == 1
+    assert body["error"] == "summary could not be extracted: bad json"
+
+
 def test_meeting_fails_when_every_extraction_fails(client, monkeypatch):
     job_id = _seed_meeting()
 
@@ -251,6 +285,7 @@ def test_meeting_fails_when_every_extraction_fails(client, monkeypatch):
     monkeypatch.setattr(routes_meetings, "ActionItemAgent", _fake_agent(_failed("a")))
     monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_failed("b")))
     monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_failed("c")))
+    monkeypatch.setattr(routes_meetings, "SummaryAgent", _fake_agent(_failed("d")))
 
     asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
 
@@ -259,7 +294,8 @@ def test_meeting_fails_when_every_extraction_fails(client, monkeypatch):
     assert body["error"] == (
         "action items could not be extracted: a; "
         "timeline could not be extracted: b; "
-        "decisions could not be extracted: c"
+        "decisions could not be extracted: c; "
+        "summary could not be extracted: d"
     )
     assert body["text"] == "We agreed to ship on Friday."
 
@@ -271,6 +307,7 @@ def test_successful_pipeline_records_no_error(client, monkeypatch):
     monkeypatch.setattr(routes_meetings, "ActionItemAgent", _fake_agent(_ok([])))
     monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_ok([])))
     monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_ok([])))
+    monkeypatch.setattr(routes_meetings, "SummaryAgent", _fake_agent(_ok(_summary())))
 
     asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
 
@@ -329,6 +366,7 @@ def test_meeting_is_only_completed_once_extractions_are_saved(client, monkeypatc
     monkeypatch.setattr(routes_meetings, "ActionItemAgent", _SpyAgent)
     monkeypatch.setattr(routes_meetings, "TimelineAgent", _fake_agent(_ok([])))
     monkeypatch.setattr(routes_meetings, "DecisionAgent", _fake_agent(_ok([])))
+    monkeypatch.setattr(routes_meetings, "SummaryAgent", _fake_agent(_ok(_summary())))
 
     asyncio.run(routes_meetings._process_transcription(job_id, Path("standup.mp3")))
 
