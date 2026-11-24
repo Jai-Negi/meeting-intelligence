@@ -14,6 +14,7 @@ from app.tools.validators import (
 )
 from app.agents.action_item_agent import ActionItemAgent
 from app.agents.decision_agent import DecisionAgent
+from app.agents.summary_agent import SummaryAgent
 from app.agents.timeline_agent import TimelineAgent
 from app.agents.transcription_agent import TranscriptionAgent
 from app.config import get_settings
@@ -21,6 +22,7 @@ from app.database.models import (
     ActionItem,
     Decision,
     Meeting,
+    Summary,
     TimelineEvent,
     Transcript,
     TranscriptSegment,
@@ -30,6 +32,7 @@ from app.schemas.meeting import (
     ActionItemResponse,
     DecisionResponse,
     MeetingUploadResponse,
+    SummaryResponse,
     TimelineEventResponse,
     TranscriptResponse,
     TranscriptSegmentResponse,
@@ -72,8 +75,8 @@ def _mark_failed_if_processing(meeting_id: str, error: str) -> None:
 async def _run_pipeline(meeting_id: str, file_path: Path) -> None:
     """
     Runs in the background after upload. Transcribes the recording,
-    then if that succeeds, runs action item, timeline, and decision
-    extraction on the resulting transcript, all at once since they
+    then if that succeeds, runs the summary, action item, timeline and
+    decision agents on the resulting transcript, all at once since they
     are independent of one another. Opens its own database session
     since the request's session is already closed by the time this
     actually runs.
@@ -114,7 +117,7 @@ async def _run_pipeline(meeting_id: str, file_path: Path) -> None:
 
         db.commit()
 
-        # Transcription succeeded, now run all three extraction agents
+        # Transcription succeeded, now run all four analysis agents
         # concurrently since none of them depend on each other. A
         # failure in any one of them does not affect the others or
         # roll back the transcript. The meeting stays "processing" until
@@ -130,25 +133,43 @@ async def _process_extractions(meeting_id: str, transcript_text: str) -> None:
     action_agent = ActionItemAgent()
     timeline_agent = TimelineAgent()
     decision_agent = DecisionAgent()
+    summary_agent = SummaryAgent()
 
-    action_result, timeline_result, decision_result = await asyncio.gather(
+    action_result, timeline_result, decision_result, summary_result = await asyncio.gather(
         action_agent.execute(transcript_text=transcript_text),
         timeline_agent.execute(transcript_text=transcript_text),
         decision_agent.execute(transcript_text=transcript_text),
+        summary_agent.execute(transcript_text=transcript_text),
     )
 
+    steps = (
+        ("action items", action_result),
+        ("timeline", timeline_result),
+        ("decisions", decision_result),
+        ("summary", summary_result),
+    )
     failures = [
         f"{step} could not be extracted: {result.error}"
-        for step, result in (
-            ("action items", action_result),
-            ("timeline", timeline_result),
-            ("decisions", decision_result),
-        )
+        for step, result in steps
         if not result.success
     ]
 
     db = SessionLocal()
     try:
+        if summary_result.success:
+            db.add(
+                Summary(
+                    meeting_id=meeting_id,
+                    overview=summary_result.data.overview,
+                    key_points=summary_result.data.key_points,
+                )
+            )
+        else:
+            logger.warning(
+                "summary failed",
+                extra={"meeting_id": meeting_id, "error": summary_result.error},
+            )
+
         if action_result.success:
             for item in action_result.data:
                 db.add(
@@ -202,7 +223,7 @@ async def _process_extractions(meeting_id: str, transcript_text: str) -> None:
         # and can be retried.
         meeting = db.query(Meeting).filter_by(id=meeting_id).first()
         if meeting is not None:
-            meeting.status = "failed" if len(failures) == 3 else "completed"
+            meeting.status = "failed" if len(failures) == len(steps) else "completed"
             meeting.error = "; ".join(failures) or None
 
         db.commit()
@@ -289,11 +310,17 @@ async def get_transcript(job_id: str, db: Session = Depends(get_db)) -> Transcri
     decisions = [
         DecisionResponse(decision=d.decision, context=d.context) for d in meeting.decisions
     ]
+    summary = (
+        SummaryResponse(overview=meeting.summary.overview, key_points=meeting.summary.key_points)
+        if meeting.summary is not None
+        else None
+    )
 
     if meeting.transcript is None:
         return TranscriptResponse(
             job_id=job_id,
             status=meeting.status,
+            summary=summary,
             action_items=action_items,
             timeline=timeline,
             decisions=decisions,
@@ -309,6 +336,7 @@ async def get_transcript(job_id: str, db: Session = Depends(get_db)) -> Transcri
             TranscriptSegmentResponse(start=s.start, end=s.end, text=s.text)
             for s in meeting.transcript.segments
         ],
+        summary=summary,
         action_items=action_items,
         timeline=timeline,
         decisions=decisions,
