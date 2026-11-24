@@ -92,7 +92,13 @@ async def retry_meeting(
             detail="the original audio file is no longer on the server, upload it again",
         )
 
-    leftovers = [meeting.transcript, *meeting.action_items, *meeting.timeline_events, *meeting.decisions]
+    leftovers = [
+        meeting.transcript,
+        meeting.summary,
+        *meeting.action_items,
+        *meeting.timeline_events,
+        *meeting.decisions,
+    ]
     for row in leftovers:
         if row is not None:
             db.delete(row)
