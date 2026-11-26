@@ -14,6 +14,7 @@ def groq_settings(monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "llm_provider", "groq")
     monkeypatch.setattr(settings, "groq_api_key", "test-key")
+    monkeypatch.setattr(settings, "llm_fallback_providers", "")
 
 
 def _fake_groq(monkeypatch, status, body='{"choices": [{"message": {"content": " hi "}}]}'):
@@ -69,3 +70,110 @@ def test_rate_limits_and_outages_stay_retryable(monkeypatch, status):
     with pytest.raises(LLMError) as exc:
         _complete()
     assert not isinstance(exc.value, PermanentError)
+
+
+# fallback between providers
+
+
+def _fake_providers(monkeypatch, **outcomes):
+    """Replaces each provider call with a reply or an error, and records the order they were tried."""
+    tried = []
+
+    def make(name):
+        async def call(prompt, system, **kwargs):
+            tried.append(name)
+            outcome = outcomes[name]
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        return call
+
+    monkeypatch.setattr(llm_tool, "_call_groq", make("groq"))
+    monkeypatch.setattr(llm_tool, "_call_anthropic", make("anthropic"))
+    monkeypatch.setattr(llm_tool, "_call_ollama", make("ollama"))
+    return tried
+
+
+def _use_chain(monkeypatch, main, fallbacks):
+    monkeypatch.setattr(get_settings(), "llm_provider", main)
+    monkeypatch.setattr(get_settings(), "llm_fallback_providers", fallbacks)
+
+
+def test_the_chain_starts_with_the_main_provider_and_skips_repeats_and_blanks(monkeypatch):
+    _use_chain(monkeypatch, "groq", " Anthropic , ,groq,ollama")
+
+    assert get_settings().llm_provider_chain == ["groq", "anthropic", "ollama"]
+
+
+def test_without_fallbacks_only_the_main_provider_is_used(monkeypatch):
+    tried = _fake_providers(monkeypatch, groq=LLMError("groq is down"), anthropic="unused", ollama="unused")
+
+    with pytest.raises(LLMError, match="^groq is down$"):
+        _complete()
+    assert tried == ["groq"]
+
+
+def test_a_working_main_provider_never_touches_the_fallbacks(monkeypatch):
+    _use_chain(monkeypatch, "groq", "anthropic")
+    tried = _fake_providers(monkeypatch, groq="from groq", anthropic="from anthropic", ollama="unused")
+
+    assert _complete() == "from groq"
+    assert tried == ["groq"]
+
+
+def test_a_failing_main_provider_falls_back_in_order(monkeypatch):
+    _use_chain(monkeypatch, "groq", "anthropic,ollama")
+    tried = _fake_providers(
+        monkeypatch,
+        groq=LLMError("rate limited"),
+        anthropic=LLMPermanentError("anthropic_api_key is not set"),
+        ollama="from ollama",
+    )
+
+    assert _complete() == "from ollama"
+    assert tried == ["groq", "anthropic", "ollama"]
+
+
+def test_when_every_provider_fails_permanently_the_error_is_permanent(monkeypatch):
+    _use_chain(monkeypatch, "groq", "anthropic")
+    _fake_providers(
+        monkeypatch,
+        groq=LLMPermanentError("groq rejected the request"),
+        anthropic=LLMPermanentError("anthropic_api_key is not set"),
+        ollama="unused",
+    )
+
+    with pytest.raises(LLMPermanentError) as exc:
+        _complete()
+    assert "groq rejected the request" in str(exc.value)
+    assert "anthropic_api_key is not set" in str(exc.value)
+
+
+def test_when_any_provider_failure_is_temporary_the_error_stays_retryable(monkeypatch):
+    _use_chain(monkeypatch, "groq", "anthropic")
+    _fake_providers(
+        monkeypatch,
+        groq=LLMError("rate limited"),
+        anthropic=LLMPermanentError("anthropic_api_key is not set"),
+        ollama="unused",
+    )
+
+    with pytest.raises(LLMError) as exc:
+        _complete()
+    assert not isinstance(exc.value, PermanentError)
+    assert "every llm provider failed" in str(exc.value)
+
+
+def test_an_unknown_provider_is_permanent(monkeypatch):
+    _use_chain(monkeypatch, "openai", "")
+
+    with pytest.raises(LLMPermanentError, match="unknown llm provider: openai"):
+        _complete()
+
+
+def test_an_unknown_fallback_does_not_hide_a_working_one(monkeypatch):
+    _use_chain(monkeypatch, "openai", "groq")
+    _fake_providers(monkeypatch, groq="from groq", anthropic="unused", ollama="unused")
+
+    assert _complete() == "from groq"
