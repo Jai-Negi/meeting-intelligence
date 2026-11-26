@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     llm_provider: str = "groq"
+    # Comma separated providers to try, in order, when the main one fails
+    llm_fallback_providers: str = ""
 
     # Whisper
     whisper_model_size: str = "base"
@@ -40,6 +42,16 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def llm_provider_chain(self) -> list[str]:
+        """The main LLM provider followed by its fallbacks, each listed once."""
+        chain: list[str] = []
+        for name in [self.llm_provider, *self.llm_fallback_providers.split(",")]:
+            name = name.strip().lower()
+            if name and name not in chain:
+                chain.append(name)
+        return chain
 
     @property
     def effective_max_upload_mb(self) -> int:
