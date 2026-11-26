@@ -24,24 +24,53 @@ def _http_error(provider: str, exc: httpx.HTTPError) -> LLMError:
 
 async def generate_completion(prompt: str, system: str | None = None) -> str:
     """
-    Sends a prompt to whichever LLM provider is configured and
-    returns the raw text response. This is the one place in the
-    codebase that knows how to talk to Groq, Ollama, or Anthropic,
-    every agent that needs an LLM call goes through here instead of
-    calling a provider SDK directly.
+    Sends a prompt to the configured LLM provider and returns the raw text
+    response. This is the one place in the codebase that knows how to talk
+    to Groq, Ollama, or Anthropic, every agent that needs an LLM call goes
+    through here instead of calling a provider SDK directly.
+
+    If LLM_FALLBACK_PROVIDERS is set and the main provider fails, each
+    fallback is tried in order before giving up. When every provider fails,
+    the error is only permanent if every failure was permanent, so a
+    provider that was merely rate limited still lets the agent retry.
     """
     settings = get_settings()
+    chain = settings.llm_provider_chain
+    errors: list[LLMError] = []
 
-    if settings.llm_provider == "groq":
+    for index, provider in enumerate(chain):
+        try:
+            return await _call_provider(provider, prompt=prompt, system=system)
+        except LLMError as exc:
+            errors.append(exc)
+            if index + 1 < len(chain):
+                logger.warning(
+                    "llm provider failed, trying the next one",
+                    extra={"provider": provider, "next_provider": chain[index + 1], "error": str(exc)},
+                )
+
+    if len(errors) == 1:
+        raise errors[0]
+
+    message = "every llm provider failed: " + "; ".join(str(exc) for exc in errors)
+    if all(isinstance(exc, PermanentError) for exc in errors):
+        raise LLMPermanentError(message)
+    raise LLMError(message)
+
+
+async def _call_provider(provider: str, prompt: str, system: str | None) -> str:
+    settings = get_settings()
+
+    if provider == "groq":
         return await _call_groq(prompt=prompt, system=system, api_key=settings.groq_api_key)
 
-    if settings.llm_provider == "anthropic":
+    if provider == "anthropic":
         return await _call_anthropic(prompt=prompt, system=system, api_key=settings.anthropic_api_key)
 
-    if settings.llm_provider == "ollama":
+    if provider == "ollama":
         return await _call_ollama(prompt=prompt, system=system, base_url=settings.ollama_base_url)
 
-    raise LLMError(f"unknown llm provider: {settings.llm_provider}")
+    raise LLMPermanentError(f"unknown llm provider: {provider}")
 
 
 async def _call_groq(prompt: str, system: str | None, api_key: str) -> str:
