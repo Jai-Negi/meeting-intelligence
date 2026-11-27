@@ -18,7 +18,7 @@ Nobody wants to rewatch an hour-long call to remember who agreed to do what. I w
 - **Follow-up email draft** generated on demand, ready to edit and copy
 - **Concurrent extraction:** the four analysis agents run in parallel with `asyncio.gather`
 - **Reliable by design:** a shared agent base class handles retries, exponential backoff with jitter, timeouts, and separates permanent errors from retryable ones, so one failing agent doesn't break the whole job
-- **Swappable providers:** Groq, Anthropic or a local Ollama model for the LLM, and local or Groq Whisper for transcription, all chosen by configuration
+- **Swappable providers with fallback:** Groq, Anthropic or a local Ollama model for the LLM, and local or Groq Whisper for transcription, all chosen by configuration. If the main LLM provider fails, the configured fallbacks are tried in order
 - **Meeting history:** browse past meetings, retry failed jobs and delete old ones from the Next.js UI
 
 ## How it works
@@ -83,6 +83,7 @@ uvicorn app.main:app --reload
 | Variable | Options | Purpose |
 |---|---|---|
 | `LLM_PROVIDER` | `groq`, `anthropic`, `ollama` | Model used for extraction and emails |
+| `LLM_FALLBACK_PROVIDERS` | comma separated, e.g. `anthropic,ollama` | Providers to try in order if the main one fails |
 | `TRANSCRIPTION_PROVIDER` | `local`, `groq` | Where Whisper runs |
 | `GROQ_API_KEY` / `ANTHROPIC_API_KEY` | | Keys for hosted providers |
 | `OLLAMA_BASE_URL` | | Local Ollama server |
@@ -110,7 +111,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/
 ```
 
-- **150 backend tests** covering the agent base class (retries, backoff, timeouts), each agent, the LLM and Whisper tools, validators, upload limits and every API route
+- **158 backend tests** covering the agent base class (retries, backoff, timeouts), each agent, the LLM and Whisper tools, validators, upload limits and every API route
 - **Backend CI** runs the full suite twice: once with local Whisper installed, and once on the slim hosted install to confirm it works without torch
 - **Frontend CI** runs a type check, lint and production build on every push
 - **Dependabot** keeps Python and npm dependencies up to date
