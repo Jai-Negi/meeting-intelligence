@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     fail_interrupted_jobs()
     logger.info(
         "application starting",
-        extra={"environment": settings.environment, "llm_provider": settings.llm_provider},
+        extra={"environment": settings.environment, "llm_providers": settings.llm_provider_chain},
     )
     yield
 
