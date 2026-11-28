@@ -1,9 +1,9 @@
-import json
 import logging
 from dataclasses import dataclass
 from typing import Any
 
 from app.agents.base_agent import BaseAgent
+from app.tools.json_reply import JSONReplyError, parse_json_reply
 from app.tools.llm_tool import generate_completion
 
 logger = logging.getLogger(__name__)
@@ -52,17 +52,9 @@ class DecisionAgent(BaseAgent):
         return self._parse_response(raw_response)
 
     def _parse_response(self, raw_response: str) -> list[DecisionData]:
-        cleaned = raw_response.strip()
-
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`")
-            if cleaned.lower().startswith("json"):
-                cleaned = cleaned[4:]
-            cleaned = cleaned.strip()
-
         try:
-            parsed = json.loads(cleaned)
-        except json.JSONDecodeError as exc:
+            parsed = parse_json_reply(raw_response)
+        except JSONReplyError as exc:
             logger.warning(
                 "failed to parse decision response as json",
                 extra={"raw_response": raw_response[:200]},
