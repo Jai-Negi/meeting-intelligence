@@ -1,9 +1,9 @@
-import json
 import logging
 from dataclasses import dataclass
 from typing import Any
 
 from app.agents.base_agent import BaseAgent
+from app.tools.json_reply import JSONReplyError, parse_json_reply
 from app.tools.llm_tool import generate_completion
 
 logger = logging.getLogger(__name__)
@@ -50,18 +50,9 @@ class ActionItemAgent(BaseAgent):
         return self._parse_response(raw_response)
 
     def _parse_response(self, raw_response: str) -> list[ActionItemData]:
-        cleaned = raw_response.strip()
-
-        # Models sometimes wrap JSON in markdown code fences despite being told not to.
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`")
-            if cleaned.lower().startswith("json"):
-                cleaned = cleaned[4:]
-            cleaned = cleaned.strip()
-
         try:
-            parsed = json.loads(cleaned)
-        except json.JSONDecodeError as exc:
+            parsed = parse_json_reply(raw_response)
+        except JSONReplyError as exc:
             logger.warning(
                 "failed to parse action item response as json",
                 extra={"raw_response": raw_response[:200]},
